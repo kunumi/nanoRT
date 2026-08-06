@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproduce record #4 (309 s / 5m09s) on one NVIDIA H200.
+# Reproduce record #4 (305.63 s / 5m05.6s) on one NVIDIA H200.
 #
 # Configuration is environment-only; scripts/nanort_train.py intentionally has
 # no CLI parser. Override any NANORT_* value before invoking this script.

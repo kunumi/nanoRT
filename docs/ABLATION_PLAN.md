@@ -83,7 +83,7 @@ testada — está confirmada no repositório.
 No commit auditado, o default do YAML era `eval_at_step1: "1"`. Como
 `timer.start()` roda antes do callback, isso fazia `time_to_target` ficar próximo
 da duração de um eval. O protocolo atual corrige o default para
-`eval_at_step1: "0"`; o recorde #4 informado (309 s) usa o primeiro eval elegível
+`eval_at_step1: "0"`; o recorde #4 verificado (305,63 s) usa o primeiro eval elegível
 no step 100. A run de 154 s abaixo é mantida apenas como diagnóstico de latência.
 
 Consequência: `time_to_target` mistura treino e infraestrutura **dentro da
@@ -294,7 +294,8 @@ gradiente.** O 0.87 do doc está inteiro no init — 0.8651 antes de treinar, 0.
 step 25. E `train/time_to_target` = **154 s**, disparado no step 1, que é exatamente
 a duração de um eval (155 s medidos). Nesta config o "record" é um eval.
 
-O **recorde oficial #4 é 309 s**, em uma run com `eval_at_step1=0` e primeiro eval
+O **recorde oficial #4 é 305,63 s**, na run W&B `ltlneqhn`, com
+`eval_at_step1=0` e primeiro eval
 elegível no step 100. O número de 154 s acima pertence ao diagnóstico com step 1
 ligado e não substitui o leaderboard.
 

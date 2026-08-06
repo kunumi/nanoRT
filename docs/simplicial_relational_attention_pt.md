@@ -6,11 +6,17 @@ condicionada ao tipo da chave estrangeira**, e cada tipo de relação é represe
 pelo **embedding de texto da sua descrição de schema** (ex.: `"director between movie
 and person"`).
 
-O principal resultado empírico desta branch é um novo recorde de **309 segundos
-(5m09s)** até o alvo fixo de AUROC pooled `0.81621`, contra 7m26s do recorde
+O principal resultado empírico desta branch é um novo recorde de **305,63 segundos
+(5m05,6s)** até o alvo fixo de AUROC pooled `0.81621`, contra 7m26s do recorde
 anterior. A receita mantém o stream de relações estático entre blocos
 (`update_relations=False`), usa warmup longo do Muon e verifica o primeiro
 checkpoint pós-update elegível no step 100.
+
+A evidência canônica é a run W&B
+[`ltlneqhn`](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn),
+que registrou AUROC pooled `0,8713918` na avaliação elegível do step 100. A
+configuração completa e a decomposição temporal estão em
+[`RECORD_04_MANIFEST.md`](RECORD_04_MANIFEST.md).
 
 Uma auditoria mediu AUROC pooled `0.8651` no step 0. Esse diagnóstico roda fora do
 timer e não pode criar recorde nem selecionar checkpoint. “Estático” descreve o

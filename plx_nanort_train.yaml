@@ -2,7 +2,7 @@ version: 1.1
 kind: component
 name: nanort-train
 description: >
-  Reproduce nanoRT record #4 (309 s): Muon + column SIGReg + static
+  Reproduce nanoRT record #4 (305.63 s): Muon + column SIGReg + static
   relation-conditioned trilinear neighbor attention on 1xH200.
 queue: nebius/default
 inputs:

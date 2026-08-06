@@ -4,7 +4,7 @@ nanoRT is an open, single-GPU speedrun for zero-shot relational foundation model
 pretraining. The goal is to reach a fixed **pooled instance-level AUROC of
 0.81621** on the held-out `rel-avito` domain using one NVIDIA H200.
 
-The current record is **309 seconds (5m09s)**. It combines:
+The current record is **305.63 seconds (5m05.6s; 306 s rounded)**. It combines:
 
 - [Muon](https://github.com/KellerJordan/Muon) for matrix parameters, with AdamW
   for embeddings, biases, normalization parameters, and SIGReg projectors;
@@ -30,17 +30,26 @@ historical `TrainTimer` boundary.
 | 1 | 45m00s | baseline | AdamW Relational Transformer | — |
 | 2 | 12m27s | 2026-05-05 | + Muon | Gabriel Veloso |
 | 3 | 7m26s | 2026-06-24 | + column-view SIGReg | Gabriel Veloso |
-| 4 | **5m09s (309 s)** | 2026-07 | + relation-conditioned trilinear neighbor attention | Gabriel Veloso |
+| 4 | **5m05.6s (305.63 s)** | 2026-07-28 | + relation-conditioned trilinear neighbor attention | Gabriel Veloso |
 
-Record #4 is **1.44× faster** than record #3 and **8.74× faster** than the
+Record #4 is **1.46× faster** than record #3 and **8.83× faster** than the
 45-minute baseline under the historical timing rule.
+
+The archived evidence is W&B run
+[`ltlneqhn`](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn):
+the first eligible evaluation, at step 100, obtained pooled AUROC `0.8713918`
+and logged `train/time_to_target=305.6257`. The corresponding checkpoint is
+archived under
+[`checkpoints/rel-avito/nanort-simplicial-staticrel`](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel).
+See the [record manifest](docs/RECORD_04_MANIFEST.md) for the resolved
+configuration, validation curve, and timing decomposition.
 
 ### Initialization audit
 
 The record configuration also has a strong initialization prior. A diagnostic
 run measured pooled AUROC `0.8651` at step 0, before any optimizer update. nanoRT
 therefore logs step 0 outside the timer, prevents it from selecting a checkpoint
-or record, and reports post-initialization gains separately. The official 309 s
+or record, and reports post-initialization gains separately. The official 305.63 s
 entry is the first eligible post-update evaluation under the frozen leaderboard
 rule; the paper must report `AUROC@0` alongside time-to-target.
 
@@ -218,6 +227,8 @@ the Rust sampler, sparse scatter kernels, and the exact timing result.
 
 - [Paper execution plan](docs/PAPER_EXECUTION_PLAN.md)
 - [Introduction and Related Work draft](docs/PAPER_DRAFT.md)
+- [Record #4 evidence manifest](docs/RECORD_04_MANIFEST.md)
+- [Polyaxon paper sweep plan](docs/POLYAXON_SWEEP_PLAN.md)
 - [Simplicial attention design](docs/simplicial_relational_attention.md)
 - [SIGReg implementation](SIGREG.md)
 - [Ablation and metric audit](docs/ABLATION_PLAN.md)

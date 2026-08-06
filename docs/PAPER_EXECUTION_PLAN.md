@@ -26,10 +26,14 @@ A narrativa tem três intervenções cumulativas, cada uma associada a um gargal
 3. **Atenção ternária condicionada pela relação:** incorpora a identidade da relação
    no score e no valor de cada mensagem vizinha.
 
-Resultado de leaderboard informado para a configuração final: **309 s (5m09s)**,
-contra 7m26s do record anterior. Antes da submissão, anexar o manifest público da run
-e a verificação por seeds; não confundir esse tempo oficial com os evals diagnósticos
-de step 0/1.
+Resultado de leaderboard verificado para a configuração final: **305,63 s
+(5m05,6s)**, contra 7m26s do record anterior. A run histórica é
+[`ltlneqhn`](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn),
+e o checkpoint está arquivado em
+[`nanort-simplicial-staticrel`](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel).
+O manifesto técnico está em [`RECORD_04_MANIFEST.md`](RECORD_04_MANIFEST.md).
+Antes da submissão, completar a verificação por seeds; não confundir esse tempo
+oficial com os evals diagnósticos de step 0/1.
 
 Usar “simplicial” como nome curto do módulo implementado, mas defini-lo tecnicamente
 como **relation-conditioned trilinear neighbor attention** ou **schema-conditioned
@@ -344,7 +348,8 @@ Executar nesta ordem e não avançar pelos gates sem registrar o resultado:
 4. **Criar manifest:** hashes de dados, commit, config e ambiente em cada run.
 5. **Rodar controles baratos:** 20 inicializações forward-only para `AUROC@0` e 3
    repetições idênticas para variância de kernel.
-6. **Congelar `K`, seeds e teste estatístico:** fazer isso antes da matriz P0.
+6. **Congelar `K`, seeds e teste estatístico:** seguir o plano pré-registrado em
+   [`POLYAXON_SWEEP_PLAN.md`](POLYAXON_SWEEP_PLAN.md).
 7. **Executar arms A–F:** primeiro 3 seeds; promover somente a matriz já definida para
    5+ seeds, sem selecionar arms por uma seed favorável.
 8. **Executar controles do simplicial e SIGReg.**

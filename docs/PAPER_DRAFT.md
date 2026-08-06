@@ -70,11 +70,18 @@ Our study is organized around the following contributions:
    cross-task components, providing a more auditable interpretation of speed records.
 
 Under the historical leaderboard protocol, the current simplicial configuration
-reaches the fixed target in **309 seconds (5m09s)**, a 1.44x improvement over the
-7m26s SIGReg record and an 8.74x improvement over the 45-minute baseline.
+records its first eligible verification above the fixed target in **305.63 seconds
+(5m05.6s)**, a 1.46x improvement over the 7m26s SIGReg record and an 8.83x
+improvement over the 45-minute baseline. The corresponding step-100 pooled AUROC
+is `0.8713918`.
 
-<!-- TODO-RESULT: Add the number of paired verification seeds and links to the final
-run manifests before submission. -->
+The historical result is archived as W&B run
+[`ltlneqhn`](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn),
+with its checkpoint under
+[`nanort-simplicial-staticrel`](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel).
+
+<!-- TODO-RESULT: Add paired verification seeds from the pre-registered Polyaxon
+sweep before submission. -->
 
 ## 2. Background and Related Work
 

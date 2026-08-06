@@ -5,12 +5,18 @@ Zero-shot relational-table pretraining where **neighbor aggregation is condition
 on the foreign-key type**, and each relation type is represented by the **text
 embedding of its schema description** (e.g. `"director between movie and person"`).
 
-The key speedrun result is **309 seconds (5m09s)** to the fixed pooled-AUROC
+The key speedrun result is **305.63 seconds (5m05.6s)** to the fixed pooled-AUROC
 target, improving the previous 7m26s record. The record configuration keeps the
 text-derived relation stream static between blocks (`update_relations=False`),
 uses a long Muon warmup, and evaluates the first eligible post-update checkpoint
 at step 100. “Static” refers to the within-forward relation state; the relation
 encoder and neighbor-attention parameters remain trainable.
+
+The canonical evidence is W&B run
+[`ltlneqhn`](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn),
+which logged pooled AUROC `0.8713918` at the record-eligible step-100 evaluation.
+The complete configuration and timing split are recorded in
+[`RECORD_04_MANIFEST.md`](RECORD_04_MANIFEST.md).
 
 An initialization audit measured pooled AUROC `0.8651` at step 0. This is logged
 outside the timer and cannot select a record or checkpoint. It establishes that
