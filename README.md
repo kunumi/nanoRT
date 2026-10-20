@@ -19,13 +19,14 @@ competitively search for the fastest way to train a Relational Transformer on
 [`rel-avito`](https://relbench.stanford.edu/) validation set.
 
 The target comes from a 45-minute calibration run of the upstream
-[Relational Transformer](https://github.com/snap-stanford/relational-transformer).
+[Relational Transformer](https://github.com/snap-stanford/relational-transformer),
+which reaches it at **41m20s**.
 The code descends from that implementation and follows the cumulative speedrun
 format of [modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt) and
 [modded-nanoTabPFN](https://github.com/borawhocodess/modded-nanotabpfn).
 
 The best archived record reaches the target in **5m05.6s (305.63 seconds)**,
-an **8.83× speedup** over the calibration horizon, using:
+an **8.11× speedup** over the reference time-to-target, using:
 
 - [Muon](https://github.com/KellerJordan/Muon) for transformer block matrices,
   with AdamW for the remaining parameters;
@@ -75,6 +76,11 @@ W&B logs stay offline by default. Set `WANDB_MODE=online` and
 | Eligible evaluation | every 100 updates |
 | Timed budget | 45 minutes |
 
+In the released implementation, Muon warms up linearly for 3,000 updates and
+then keeps a constant learning rate. The backbone AdamW group uses a linear
+OneCycle schedule with a 20% warm-up. The SIGReg projector has a separate
+AdamW optimizer at `1e-3`, without weight decay or a learning-rate schedule.
+
 The code retains `simplicial` in class and configuration names for compatibility
 with the record runs.
 
@@ -87,7 +93,7 @@ Historical progression for the following task:
 
 | # | Record | Date | Description | Links | Contributor |
 |---:|---|---|---|---|---|
-| 1 | 45m00s calibration | — | AdamW Relational Transformer | [protocol](docs/BENCHMARK.md) | — |
+| 1 | 41m20s | — | AdamW Relational Transformer, 45-minute calibration budget | [protocol](docs/BENCHMARK.md) | — |
 | 2 | 12m27s | 2026-05-05 | + Muon | [code](https://github.com/kunumi/nanoRT/commit/c50df4c) | Gabriel Veloso |
 | 3 | 7m26s | 2026-06-24 | + column-view SIGReg | [code](https://github.com/kunumi/nanoRT/commit/49df323) | Gabriel Veloso |
 | 4 | **5m05.6s** | 2026-07-28 | + typed trilinear attention | [log](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn), [checkpoint](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel) | Gabriel Veloso |
@@ -102,13 +108,18 @@ run to measure its own wall-clock time.
 New records must:
 
 - use one NVIDIA H200 and start trainable weights from a declared random seed;
-- keep the frozen training mixture: `rel-amazon`, `rel-hm`, `rel-stack`,
-  `rel-trial`, and `rel-f1`, with `rel-avito` held out from gradient updates;
+- use the prescribed RelBench v1 binary-classification training artifact:
+  `rel-amazon`, `rel-hm`, `rel-stack`, `rel-trial`, and `rel-f1`, with
+  `rel-avito` held out from gradient updates and `rel-event` excluded;
+- keep the frozen temperature-sampled mixture, with database seed shares
+  proportional to `n(d)^0.5`; this subsampling is applied when building the
+  artifact, rather than reweighted during training;
 - preserve the validation artifact, target masking, temporal cutoffs, and
   declared leakage-column exclusions;
-- preserve the pooled AUROC implementation, target, evaluation cadence,
-  and timer boundary;
-- load no pretrained model checkpoint;
+- preserve the validation pipeline, pooled AUROC implementation, target,
+  evaluation cadence, and timer boundary;
+- load no model checkpoint; frozen text embeddings belong to the data artifact;
+- keep the timed budget at 45 minutes;
 - report runs that miss the target as right-censored failures.
 
 Architecture, optimization, regularization, sampling, precision, and systems
@@ -119,7 +130,10 @@ for the complete protocol and required evidence.
 
 The official evaluator concatenates predictions and labels from both eligible
 `rel-avito` tasks, `user-visits` and `user-clicks`, and computes **one pooled
-instance-level AUROC**. Cross-task score alignment contributes to this metric.
+instance-level AUROC**. Only this pooled score determines record eligibility;
+it weights examples rather than averaging task AUROCs. Cross-task score
+alignment contributes to this metric. The artifact fixes the validation seed
+cap at 50,000, hop radius, and text embeddings.
 Each evaluation also reports per-task AUROC, prevalence, within-task and
 cross-task contributions, and prediction tie rates.
 
@@ -132,6 +146,13 @@ The clock starts after the first optimizer update and includes subsequent
 training, scheduled validation, logging, and checkpointing. The first eligible
 evaluation is at step 100. Time-to-target is an upper bound at that evaluation
 cadence.
+
+The reference calibration was evaluated every 500 updates and reached the
+target at step 10,500 (41m20s). The archived record was evaluated every 100
+updates and first verified the target at step 100 (305.6257 seconds). Both
+times are upper bounds on their respective evaluation grids. The paper reports
+182.96 seconds of verification (59.9%) and 122.67 seconds of training (40.1%)
+for that record.
 
 ## References
 

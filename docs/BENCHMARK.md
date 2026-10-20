@@ -6,7 +6,10 @@ H200. This document defines the public submission contract.
 ## Fixed quantities
 
 - Training bundle: the five non-holdout RelBench databases in the pinned
-  relation-aware artifact.
+  relation-aware artifact, using RelBench v1 binary classification tasks;
+  `rel-event` is excluded for temporal leakage.
+- Mixture: temperature sampling with `alpha=0.5`, so database seed shares are
+  proportional to `n(d)^0.5`. Subsampling is frozen into the training artifact.
 - Holdout: `rel-avito`.
 - Validation tasks: `user-visits/num_click` and `user-clicks/num_click`.
 - Official metric: pooled instance-level ROC AUC over both tasks.
@@ -34,8 +37,9 @@ A valid run:
 4. excludes the holdout database from gradient updates;
 5. preserves target masking and temporal cutoffs;
 6. preserves the official metric, target, evaluation cadence, and timer;
-7. loads no pretrained model checkpoint;
-8. reports failures that do not reach the target as right-censored runs.
+7. loads no model checkpoint and does not modify the validation pipeline;
+8. keeps the timed budget at 45 minutes;
+9. reports failures that do not reach the target as right-censored runs.
 
 The preprocessed text embeddings are part of the fixed data artifact, not a
 pretrained model checkpoint.
@@ -46,6 +50,9 @@ At each scheduled evaluation, the evaluator concatenates predictions and
 labels from all eligible validation examples and computes one ROC AUC. This
 weights tasks by their positive-negative pair counts and includes comparisons
 between examples from different tasks.
+
+The validation artifact fixes the seed cap at 50,000, hop radius, and text
+embeddings. Its contents and validation sampling must remain unchanged.
 
 The following diagnostics must accompany the official pooled value:
 
@@ -69,6 +76,12 @@ validation, logging, and checkpointing.
 The score is the timer value at the first eligible evaluation with pooled
 AUROC at or above `0.81621`. Since evaluation is discrete, the score is an upper
 bound located on the evaluation grid.
+
+The paper's reference calibration used a 500-update evaluation grid and first
+reached the target at step 10,500, after 41m20s. The archived record used a
+100-update grid and reached it at step 100, after 305.6257 seconds: an 8.11x
+speedup over the reference time-to-target. The 45-minute budget is not the
+reference time-to-target.
 
 ## Required submission evidence
 
