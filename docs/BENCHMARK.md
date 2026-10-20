@@ -83,6 +83,18 @@ reached the target at step 10,500, after 41m20s. The archived record used a
 speedup over the reference time-to-target. The 45-minute budget is not the
 reference time-to-target.
 
+## Released record recipe
+
+Defaults are defined in [`rt/config.py`](../rt/config.py): 12 blocks, width 256,
+8 heads, batches of 256, and contexts of 1024 cells. Typed trilinear attention
+uses static relations and QK normalization in every block; column-view SIGReg
+follows block 0 with global column pooling and weight `1e-3`.
+
+Muon warms up linearly to `5e-3` over 3,000 updates, then stays constant.
+The backbone AdamW group uses a linear OneCycle schedule at peak LR `1e-3`,
+with 20% warm-up and weight decay `0.1`. The SIGReg projector uses a separate
+AdamW optimizer at `1e-3`, without weight decay or a learning-rate schedule.
+
 ## Required submission evidence
 
 - source snapshot or commit;
