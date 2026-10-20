@@ -1,8 +1,3 @@
-import maturin_import_hook
-from maturin_import_hook.settings import MaturinSettings
-
-maturin_import_hook.install(settings=MaturinSettings(release=True, uv=True))
-
 import json
 import os
 from functools import cache
@@ -26,9 +21,7 @@ def _load_column_index(db_name: str) -> dict:
     """
     Load the column index mapping for a dataset (cached).
     """
-    column_index_path = os.path.join(
-        _pre_root(), db_name, "column_index.json"
-    )
+    column_index_path = os.path.join(_pre_root(), db_name, "column_index.json")
 
     with open(column_index_path) as f:
         return json.load(f)
@@ -63,10 +56,8 @@ def _load_relation_text_idxs(db_name: str) -> tuple[int, ...]:
 def _load_text_embeddings(
     db_name: str, embedding_model: str, d_text: int
 ) -> np.ndarray:
-    emb_path = os.path.join(
-        _pre_root(), db_name, f"text_emb_{embedding_model}.bin"
-    )
-    emb = np.fromfile(emb_path, dtype=ml_dtypes.bfloat16)
+    emb_path = os.path.join(_pre_root(), db_name, f"text_emb_{embedding_model}.bin")
+    emb = np.memmap(emb_path, mode="r", dtype=ml_dtypes.bfloat16)
     return emb.reshape(-1, d_text)
 
 
@@ -83,7 +74,7 @@ def _load_relation_embeddings(
         raise ValueError(
             f"Relation text index {max_relation_text_idx} is missing from "
             f"text_emb_{embedding_model}.bin for dataset {db_name}. "
-            "Rerun text embedding after preprocessing."
+            "Reinstall the pinned relation-aware artifact bundle."
         )
     return text_embs[np.asarray(relation_text_idxs, dtype=np.int64)]
 
@@ -94,8 +85,6 @@ class RelationalDataset(Dataset):
         tasks,
         batch_size,
         seq_len,
-        rank,
-        world_size,
         max_bfs_width,
         embedding_model,
         d_text,
@@ -152,8 +141,6 @@ class RelationalDataset(Dataset):
             dataset_tuples=dataset_tuples,
             batch_size=batch_size,
             seq_len=seq_len,
-            rank=rank,
-            world_size=world_size,
             max_bfs_width=max_bfs_width,
             embedding_model=embedding_model,
             d_text=d_text,
@@ -198,11 +185,9 @@ class RelationalDataset(Dataset):
         out["sem_types"] = out["sem_types"].view(-1, self.seq_len)
         out["masks"] = out["masks"].view(-1, self.seq_len)
         out["is_targets"] = out["is_targets"].view(-1, self.seq_len)
-        out["is_task_nodes"] = out["is_task_nodes"].view(-1, self.seq_len)
         out["is_padding"] = out["is_padding"].view(-1, self.seq_len)
         out["table_name_idxs"] = out["table_name_idxs"].view(-1, self.seq_len)
         out["col_name_idxs"] = out["col_name_idxs"].view(-1, self.seq_len)
-        out["class_value_idxs"] = out["class_value_idxs"].view(-1, self.seq_len)
 
         out["f2p_nbr_idxs"] = out["f2p_nbr_idxs"].view(-1, self.seq_len, 5)
         out["f2p_rel_idxs"] = out["f2p_rel_idxs"].view(-1, self.seq_len, 5)

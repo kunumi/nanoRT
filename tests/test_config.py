@@ -65,8 +65,8 @@ class TrainConfigTest(unittest.TestCase):
             TrainConfig(max_steps=100, lr_total_steps=99).validate()
 
     def test_invalid_evaluation_limits_fail_fast(self):
-        with self.assertRaisesRegex(ValueError, "max_eval_steps"):
-            TrainConfig(max_eval_steps=0).validate()
+        with self.assertRaisesRegex(ValueError, "val_eval_freq"):
+            TrainConfig(val_eval_freq=0).validate()
 
 
 if __name__ == "__main__":

@@ -53,7 +53,7 @@ RUN mkdir -p rt && : > rt/__init__.py \
 # ships. (No GPU at build time, so we only import + read versions, never
 # torch.cuda.is_available().)
 RUN pixi run --manifest-path /app/pyproject.toml python -c \
-      "import torch, sklearn, sentence_transformers, einops, polars; \
+      "import torch, sklearn, einops, numpy, ml_dtypes, wandb, huggingface_hub; \
 print('torch', torch.__version__, '| cuda build', torch.version.cuda)" \
  && pixi run --manifest-path /app/pyproject.toml maturin --version \
  && pixi run --manifest-path /app/pyproject.toml cargo --version

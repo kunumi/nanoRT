@@ -86,7 +86,6 @@ def resolve_tasks(cfg: TrainConfig) -> TrainConfig:
         for db, table, target, drop in ALL_CLF_TASKS
         if db != cfg.holdout_db
     ]
-    cfg.eval_tasks = []
 
     observed_train_dbs = {task[0] for task in cfg.train_tasks}
     expected_train_dbs = set(train_dbs)

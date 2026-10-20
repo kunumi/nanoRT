@@ -72,7 +72,9 @@ def validate_database_artifact(
     required = (*REQUIRED_FILES, embedding_filename(embedding_model))
     missing = [name for name in required if not (path / name).is_file()]
     if missing:
-        raise ValueError(f"incomplete artifact at {path}; missing: {', '.join(missing)}")
+        raise ValueError(
+            f"incomplete artifact at {path}; missing: {', '.join(missing)}"
+        )
 
     relation_indices = _read_relation_indices(path / "relation_text_idxs.json")
     if not relation_indices:
@@ -109,9 +111,7 @@ def validate_bundle(
     installed: dict[str, Path] = {}
     for db in expected_train:
         path = train_root / db
-        validate_database_artifact(
-            path, embedding_model=embedding_model, d_text=d_text
-        )
+        validate_database_artifact(path, embedding_model=embedding_model, d_text=d_text)
         installed[db] = path
 
     holdout_path = val_root / holdout
@@ -120,9 +120,7 @@ def validate_bundle(
     )
     installed[holdout] = holdout_path
 
-    observed_train = sorted(
-        path.name for path in train_root.iterdir() if path.is_dir()
-    )
+    observed_train = sorted(path.name for path in train_root.iterdir() if path.is_dir())
     if observed_train != sorted(expected_train):
         raise ValueError(
             "training artifact violates holdout isolation: "
@@ -191,17 +189,16 @@ def _download(
     revision: str,
     artifact_root: Path,
     patterns: Iterable[str],
-) -> Path:
+) -> None:
     from huggingface_hub import snapshot_download
 
-    downloaded = snapshot_download(
+    snapshot_download(
         repo_id=repo_id,
         repo_type="dataset",
         revision=revision,
         allow_patterns=list(patterns),
         local_dir=artifact_root,
     )
-    return Path(downloaded)
 
 
 def parse_args() -> argparse.Namespace:
@@ -224,9 +221,7 @@ def parse_args() -> argparse.Namespace:
         "--artifact-root",
         type=Path,
         default=Path(
-            os.environ.get(
-                "NANORT_ARTIFACT_ROOT", "~/.cache/modded-nanort/artifacts"
-            )
+            os.environ.get("NANORT_ARTIFACT_ROOT", "~/.cache/modded-nanort/artifacts")
         ).expanduser(),
     )
     parser.add_argument(
@@ -236,8 +231,13 @@ def parse_args() -> argparse.Namespace:
             os.environ.get("NANORT_PRE_ROOT", "~/.cache/modded-nanort/pre")
         ).expanduser(),
     )
-    parser.add_argument("--embedding-model", default="all-MiniLM-L12-v2")
-    parser.add_argument("--d-text", type=int, default=384)
+    parser.add_argument(
+        "--embedding-model",
+        default=os.environ.get("NANORT_EMBEDDING_MODEL", "all-MiniLM-L12-v2"),
+    )
+    parser.add_argument(
+        "--d-text", type=int, default=int(os.environ.get("NANORT_D_TEXT", "384"))
+    )
     parser.add_argument(
         "--local-only",
         action="store_true",
@@ -285,9 +285,6 @@ def main() -> None:
         embedding_model=args.embedding_model,
     )
 
-    os.environ["NANORT_ARTIFACT_REPO"] = args.repo_id
-    os.environ["NANORT_ARTIFACT_REVISION"] = resolved_revision
-    os.environ["NANORT_ARTIFACT_PREFIX"] = artifact_prefix(args.holdout)
     print(f"installed relation-aware artifacts in {args.install_root}", flush=True)
     print(f"resolved revision: {resolved_revision}", flush=True)
 

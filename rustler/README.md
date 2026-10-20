@@ -1,12 +1,15 @@
-# rustler - context sampler for RT, written in Rust
+# rustler
 
-`pre.rs` contains code to preprocess datasets.
+Rust context sampler exposed to Python as `rustler.Sampler`.
 
-`fly.rs` contains code for on-the-fly context sampling.
+- `src/fly.rs`: temporal context sampling, target masking, and typed FK edges.
+- `src/common.rs`: serialized graph types matching the frozen data artifacts.
+- `src/lib.rs`: Python extension entry point.
 
-`common.rs` contains data structures exchanged between `pre.rs` and `fly.rs`
-(using `rkyv`: https://github.com/rkyv/rkyv).
+The sampler reads the artifacts installed by `data/download.py` and honors
+`NANORT_PRE_ROOT`. Build it through `./run.sh`, or after `pixi install --locked`:
 
-`lib.rs` is the entry point to rustler as a library.
-
-`main.rs` is the entry point to rustler as a standalone executable.
+```bash
+cd rustler
+pixi run maturin develop --uv --release
+```

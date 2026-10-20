@@ -11,7 +11,7 @@ Training requires Linux x86-64, one NVIDIA H200, a CUDA 12.4-compatible driver,
 and [pixi](https://pixi.sh/).
 
 ```bash
-git clone https://github.com/kunumi/nanoRT.git
+git clone --branch codex/camera-ready --single-branch https://github.com/kunumi/nanoRT.git
 cd nanoRT
 ./run.sh
 ```
@@ -26,6 +26,7 @@ The default dataset is
 [GabrielVeloso/nanort-artifacts](https://huggingface.co/datasets/GabrielVeloso/nanort-artifacts),
 pinned to commit `8e6289edd0aa1d61b3b4c2ec1e1beed48224cd2c`.
 The installer records the resolved revision in the training metadata.
+This release consumes the published frozen artifacts directly.
 
 ## Configuration
 
@@ -85,8 +86,9 @@ bash -n run.sh docker_build.sh
 ```
 
 The Python tests cover configuration, artifact installation, holdout isolation,
-AUROC decomposition, attention, SIGReg, and model forward/backward gradients. Reproducing the full training run
-and timing requires the H200 environment and the frozen data.
+AUROC decomposition, attention, SIGReg, model gradients, and training control flow.
+Reproducing the full training run and timing requires the H200 environment and
+the frozen data.
 
 ## Docker environment
 
@@ -109,7 +111,7 @@ docker run --rm --gpus all --ipc=host \
 
 ```text
 rt/          model, optimization, metrics, and training
-rustler/     Rust preprocessing and context sampler
+rustler/     Rust context sampler
 data/        artifact installer and data documentation
 scripts/     training entry point
 tests/       unit and protocol tests

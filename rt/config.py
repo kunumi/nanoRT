@@ -93,7 +93,6 @@ class TrainConfig:
     d_text: int = 384
     # Resolved at runtime from holdout_db (not env-configurable).
     train_tasks: list = field(default_factory=list)
-    eval_tasks: list = field(default_factory=list)
     val_tasks: list = field(default_factory=list)
 
     # ── optimization ────────────────────────────────────────────────────────
@@ -132,11 +131,7 @@ class TrainConfig:
     sigreg_col_global_pool: bool = True
 
     # ── evaluation / budget / checkpoint ────────────────────────────────────
-    eval_splits: tuple = ("val",)
-    eval_freq: int | None = None
-    eval_pow2: bool = False
-    max_eval_steps: int = 40
-    val_eval_freq: int | None = 100
+    val_eval_freq: int = 100
     eval_at_step1: bool = False
     # Zero-gradient baseline: evaluate the model exactly as initialised, before
     # any optimizer step. Separates "the init already scores this" from "training
@@ -149,7 +144,6 @@ class TrainConfig:
     val_eval_dense_until: int = 0
     val_eval_dense_freq: int = 5
     time_budget_minutes: float | None = 45.0
-    load_ckpt_path: str | None = None
     save_ckpt_dir: str | None = None
     compile_: bool = True
 
@@ -208,9 +202,6 @@ class TrainConfig:
             sigreg_col_global_pool=_bool(
                 "NANORT_SIGREG_COL_POOL", cls.sigreg_col_global_pool
             ),
-            eval_freq=_opt_int("NANORT_EVAL_FREQ", cls.eval_freq, disabled_below=1),
-            eval_pow2=_bool("NANORT_EVAL_POW2", cls.eval_pow2),
-            max_eval_steps=_int("NANORT_MAX_EVAL_STEPS", cls.max_eval_steps),
             val_eval_freq=_int("NANORT_VAL_EVAL_FREQ", cls.val_eval_freq),
             eval_at_step1=_bool("NANORT_EVAL_AT_STEP1", cls.eval_at_step1),
             eval_at_step0=_bool("NANORT_EVAL_AT_STEP0", cls.eval_at_step0),
@@ -225,7 +216,6 @@ class TrainConfig:
                 cls.time_budget_minutes,
                 zero_is_none=True,
             ),
-            load_ckpt_path=os.environ.get("NANORT_LOAD_CKPT_PATH") or None,
             save_ckpt_dir=os.environ.get("NANORT_SAVE_CKPT_DIR") or None,
             compile_=_bool("NANORT_COMPILE", cls.compile_),
         )
@@ -307,12 +297,8 @@ class TrainConfig:
             )
         if self.sigreg_knots < 2 or self.sigreg_t_max <= 0:
             raise ValueError("SIGReg quadrature requires knots >= 2 and t_max > 0")
-        if self.val_eval_freq is not None and self.val_eval_freq <= 0:
+        if self.val_eval_freq <= 0:
             raise ValueError("val_eval_freq must be positive when provided")
-        if self.eval_freq is not None and self.eval_freq <= 0:
-            raise ValueError("eval_freq must be positive when provided")
-        if self.max_eval_steps == 0 or self.max_eval_steps < -1:
-            raise ValueError("max_eval_steps must be -1 (all) or a positive integer")
         if self.val_eval_dense_until < 0 or self.val_eval_dense_freq <= 0:
             raise ValueError(
                 "dense eval window must be non-negative with positive frequency"
@@ -323,7 +309,7 @@ class TrainConfig:
 
     def summary(self) -> str:
         """One-line human-readable dump of the non-task fields (for logs)."""
-        skip = {"train_tasks", "eval_tasks", "val_tasks"}
+        skip = {"train_tasks", "val_tasks"}
         return "  ".join(
             f"{f.name}={getattr(self, f.name)}"
             for f in fields(self)

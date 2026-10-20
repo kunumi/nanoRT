@@ -1,13 +1,6 @@
+// Archived field order must match the published .rkyv artifacts.
+// Some fields remain here solely for binary compatibility.
 use rkyv::{Archive, Deserialize, Serialize};
-use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
-
-// node represents a row in a table
-// TableInfo struct has the offset of the first node in the table and the number of nodes in the table
-#[derive(SerdeSerialize, SerdeDeserialize)]
-pub struct TableInfo {
-    pub node_idx_offset: i32,
-    pub num_nodes: i32,
-}
 
 #[derive(Archive, Deserialize, Serialize, Hash, Eq, PartialEq, Default, Clone, Debug)]
 #[rkyv(derive(PartialEq, Debug))]

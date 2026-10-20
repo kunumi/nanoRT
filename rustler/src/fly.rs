@@ -1,7 +1,6 @@
 use crate::common::{
     ArchivedAdj, ArchivedEdge, ArchivedNode, ArchivedOffsets, ArchivedTableType, Offsets,
 };
-use clap::Parser;
 use half::bf16;
 use itertools::izip;
 use memmap2::Mmap;
@@ -21,7 +20,6 @@ use std::env::var;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::str;
-use std::time::Instant;
 
 const MAX_F2P_NBRS: usize = 5;
 
@@ -31,7 +29,6 @@ struct Vecs {
     f2p_rel_idxs: Vec<i32>,
     table_name_idxs: Vec<i32>,
     col_name_idxs: Vec<i32>,
-    class_value_idxs: Vec<i32>,
     col_name_values: Vec<bf16>,
     sem_types: Vec<i32>,
     number_values: Vec<bf16>,
@@ -40,7 +37,6 @@ struct Vecs {
     boolean_values: Vec<bf16>,
     masks: Vec<bool>,
     is_targets: Vec<bool>,
-    is_task_nodes: Vec<bool>,
     is_padding: Vec<bool>,
     true_batch_size: usize,
 }
@@ -51,7 +47,6 @@ struct Slices<'a> {
     f2p_rel_idxs: &'a mut [i32],
     table_name_idxs: &'a mut [i32],
     col_name_idxs: &'a mut [i32],
-    class_value_idxs: &'a mut [i32],
     col_name_values: &'a mut [bf16],
     sem_types: &'a mut [i32],
     number_values: &'a mut [bf16],
@@ -60,7 +55,6 @@ struct Slices<'a> {
     boolean_values: &'a mut [bf16],
     masks: &'a mut [bool],
     is_targets: &'a mut [bool],
-    is_task_nodes: &'a mut [bool],
     is_padding: &'a mut [bool],
 }
 
@@ -73,7 +67,6 @@ impl Vecs {
             f2p_rel_idxs: vec![-1; l * MAX_F2P_NBRS],
             table_name_idxs: vec![0; l],
             col_name_idxs: vec![0; l],
-            class_value_idxs: vec![-1; l],
             col_name_values: vec![bf16::ZERO; l * d_text],
             sem_types: vec![0; l],
             number_values: vec![bf16::ZERO; l],
@@ -82,7 +75,6 @@ impl Vecs {
             boolean_values: vec![bf16::ZERO; l],
             masks: vec![false; l],
             is_targets: vec![false; l],
-            is_task_nodes: vec![false; l],
             is_padding: vec![true; l],
             true_batch_size,
         }
@@ -95,7 +87,6 @@ impl Vecs {
             self.f2p_rel_idxs.chunks_exact_mut(seq_len * MAX_F2P_NBRS),
             self.table_name_idxs.chunks_exact_mut(seq_len),
             self.col_name_idxs.chunks_exact_mut(seq_len),
-            self.class_value_idxs.chunks_exact_mut(seq_len),
             self.col_name_values.chunks_exact_mut(seq_len * d_text),
             self.sem_types.chunks_exact_mut(seq_len),
             self.number_values.chunks_exact_mut(seq_len),
@@ -104,7 +95,6 @@ impl Vecs {
             self.boolean_values.chunks_exact_mut(seq_len),
             self.masks.chunks_exact_mut(seq_len),
             self.is_targets.chunks_exact_mut(seq_len),
-            self.is_task_nodes.chunks_exact_mut(seq_len),
             self.is_padding.chunks_exact_mut(seq_len),
         )
         .map(
@@ -114,7 +104,6 @@ impl Vecs {
                 f2p_rel_idxs,
                 table_name_idxs,
                 col_name_idxs,
-                class_value_idxs,
                 col_name_values,
                 sem_types,
                 number_values,
@@ -123,7 +112,6 @@ impl Vecs {
                 boolean_values,
                 masks,
                 is_targets,
-                is_task_nodes,
                 is_padding,
             )| Slices {
                 node_idxs,
@@ -131,7 +119,6 @@ impl Vecs {
                 f2p_rel_idxs,
                 table_name_idxs,
                 col_name_idxs,
-                class_value_idxs,
                 col_name_values,
                 sem_types,
                 number_values,
@@ -140,7 +127,6 @@ impl Vecs {
                 boolean_values,
                 masks,
                 is_targets,
-                is_task_nodes,
                 is_padding,
             },
         )
@@ -163,12 +149,6 @@ impl Vecs {
                 .into_py_any(py)
                 .unwrap(),
             ("col_name_idxs", PyArray1::from_vec(py, self.col_name_idxs))
-                .into_py_any(py)
-                .unwrap(),
-            (
-                "class_value_idxs",
-                PyArray1::from_vec(py, self.class_value_idxs),
-            )
                 .into_py_any(py)
                 .unwrap(),
             (
@@ -204,9 +184,6 @@ impl Vecs {
             ("is_targets", PyArray1::from_vec(py, self.is_targets))
                 .into_py_any(py)
                 .unwrap(),
-            ("is_task_nodes", PyArray1::from_vec(py, self.is_task_nodes))
-                .into_py_any(py)
-                .unwrap(),
             ("is_padding", PyArray1::from_vec(py, self.is_padding))
                 .into_py_any(py)
                 .unwrap(),
@@ -234,8 +211,6 @@ struct Item {
 pub struct Sampler {
     batch_size: usize,
     seq_len: usize,
-    rank: usize,
-    world_size: usize,
     datasets: Vec<Dataset>,
     items: Vec<Item>,
     max_bfs_width: usize,
@@ -254,8 +229,6 @@ impl Sampler {
         dataset_tuples: Vec<(String, i32, i32)>,
         batch_size: usize,
         seq_len: usize,
-        rank: usize,
-        world_size: usize,
         max_bfs_width: usize,
         embedding_model: &str,
         d_text: usize,
@@ -327,8 +300,6 @@ impl Sampler {
         Self {
             batch_size,
             seq_len,
-            rank,
-            world_size,
             datasets,
             items,
             max_bfs_width,
@@ -357,22 +328,19 @@ impl Sampler {
 
 impl Sampler {
     fn len(&self) -> usize {
-        self.items.len().div_ceil(self.batch_size * self.world_size)
+        self.items.len().div_ceil(self.batch_size)
     }
 
     fn batch(&self, batch_idx: usize) -> Vecs {
-        let true_batch_size = self.batch_size.min(
-            self.items.len()
-                - self.rank * self.batch_size
-                - batch_idx * self.batch_size * self.world_size,
-        );
+        let true_batch_size = self
+            .batch_size
+            .min(self.items.len() - batch_idx * self.batch_size);
 
         let mut vecs = Vecs::new(self.batch_size, self.seq_len, true_batch_size, self.d_text);
         vecs.chunks_exact_mut(self.seq_len, self.d_text)
             .enumerate()
             .for_each(|(i, slices)| {
-                let j =
-                    batch_idx * self.batch_size * self.world_size + self.rank * self.batch_size + i;
+                let j = batch_idx * self.batch_size + i;
                 // when self.batch_size > true_batch_size, this will wrap around
                 let j = j % self.items.len();
                 let item = &self.items[j];
@@ -441,12 +409,17 @@ impl Sampler {
 
             for edge in p2f_edges.iter() {
                 // include edges to task table only if seed node belongs to the task table
-                if edge.table_name_idx != seed_node.table_name_idx && edge.table_type != ArchivedTableType::Db {
+                if edge.table_name_idx != seed_node.table_name_idx
+                    && edge.table_type != ArchivedTableType::Db
+                {
                     continue;
                 }
 
                 // temporal constraint
-                if edge.timestamp.is_some() && seed_node.timestamp.is_some() && edge.timestamp > seed_node.timestamp {
+                if edge.timestamp.is_some()
+                    && seed_node.timestamp.is_some()
+                    && edge.timestamp > seed_node.timestamp
+                {
                     continue;
                 }
 
@@ -506,7 +479,6 @@ impl Sampler {
 
                 slices.table_name_idxs[seq_i] = node.table_name_idx.into();
                 slices.col_name_idxs[seq_i] = node.col_name_idxs[cell_i].into();
-                slices.class_value_idxs[seq_i] = node.class_value_idx[cell_i].into();
                 slices.col_name_values[seq_i * self.d_text..(seq_i + 1) * self.d_text]
                     .copy_from_slice(get_text_emb(
                         dataset,
@@ -527,14 +499,12 @@ impl Sampler {
 
                 slices.boolean_values[seq_i] = bf16::from_f32(node.boolean_values[cell_i].into());
 
-                let is_target = seed_node_idx == node.node_idx
-                    && node.col_name_idxs[cell_i] == target_column;
+                let is_target =
+                    seed_node_idx == node.node_idx && node.col_name_idxs[cell_i] == target_column;
                 slices.is_targets[seq_i] = is_target;
 
                 slices.masks[seq_i] = is_target;
 
-                slices.is_task_nodes[seq_i] =
-                    node.is_task_node || (node.col_name_idxs[cell_i] == target_column);
                 slices.is_padding[seq_i] = false;
 
                 seq_i += 1;
@@ -569,48 +539,109 @@ fn get_text_emb(dataset: &Dataset, idx: i32, d_text: usize) -> &[bf16] {
     &text_emb[(idx as usize) * d_text..(idx as usize + 1) * d_text]
 }
 
-#[derive(Parser)]
-pub struct Cli {
-    #[arg(default_value = "rel-f1")]
-    db_name: String,
-    #[arg(default_value = "128")]
-    batch_size: usize,
-    #[arg(default_value = "1024")]
-    seq_len: usize,
-    #[arg(default_value = "1000")]
-    num_trials: usize,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{Adj, Edge, Node, SemType, TableType};
 
-pub fn main(cli: Cli) {
-    let tic = Instant::now();
-    let sampler = Sampler::new(
-        vec![(cli.db_name, 0, 10)], // dataset_tuples
-        cli.batch_size,             // batch_size
-        cli.seq_len,                // seq_len
-        0,                          // rank
-        1,                          // world_size
-        256,                        // max_bfs_width
-        "all-MiniLM-L12-v2",        // embedding_model
-        384,                        // d_text
-        0,                          // seed
-        vec![-1; 1],                // target_columns
-        vec![Vec::<i32>::new()],    // columns_to_drop
-        vec![0],                    // relation_table_offsets
-    );
-    println!("Sampler loaded in {:?}", tic.elapsed());
-
-    let mut sum = 0;
-    let mut sum_sq = 0;
-    let mut rng = rand::rng();
-    for _ in 0..cli.num_trials {
-        let tic = Instant::now();
-        let batch_idx = rng.random_range(0..sampler.len());
-        let _batch = sampler.batch(batch_idx);
-        let elapsed = tic.elapsed().as_millis();
-        sum += elapsed;
-        sum_sq += elapsed * elapsed;
+    #[test]
+    fn frozen_graph_sampling_preserves_targets_relations_and_partial_batches() {
+        let directory = std::env::temp_dir().join(format!(
+            "nanort-sampler-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let edge = |node_idx| Edge {
+            node_idx,
+            table_name_idx: 1,
+            relation_text_idx: 2,
+            table_type: TableType::Db,
+            timestamp: None,
+        };
+        let mut nodes = Vec::new();
+        let mut offsets = vec![0];
+        for node_idx in 0..2 {
+            let node = Node {
+                node_idx,
+                f2p_nbr_idxs: if node_idx == 0 { vec![1] } else { vec![] },
+                f2p_edges: if node_idx == 0 { vec![edge(1)] } else { vec![] },
+                table_name_idx: 1,
+                col_name_idxs: vec![0],
+                sem_types: vec![SemType::Boolean],
+                number_values: vec![0.0],
+                text_values: vec![1],
+                datetime_values: vec![0.0],
+                boolean_values: vec![if node_idx == 0 { 1.0 } else { 0.0 }],
+                class_value_idx: vec![-1],
+                ..Node::default()
+            };
+            nodes.extend_from_slice(&rkyv::to_bytes::<Error>(&node).unwrap());
+            offsets.push(nodes.len() as i64);
+        }
+        fs::write(directory.join("nodes"), nodes).unwrap();
+        let adjacency = Adj {
+            adj: vec![vec![], vec![edge(0)]],
+        };
+        fs::write(
+            directory.join("adj"),
+            rkyv::to_bytes::<Error>(&adjacency).unwrap(),
+        )
+        .unwrap();
+        let text: Vec<u8> = (0..12)
+            .flat_map(|value| bf16::from_f32(value as f32).to_le_bytes())
+            .collect();
+        fs::write(directory.join("text"), text).unwrap();
+        let mmap =
+            |name| unsafe { Mmap::map(&fs::File::open(directory.join(name)).unwrap()).unwrap() };
+        let make_sampler = || Sampler {
+            batch_size: 3,
+            seq_len: 4,
+            datasets: vec![Dataset {
+                mmap: mmap("nodes"),
+                text_mmap: mmap("text"),
+                p2f_adj_mmap: mmap("adj"),
+                relation_text_idx_to_idx: HashMap::from([(2, 0)]),
+                offsets: offsets.clone(),
+            }],
+            items: (0..2)
+                .map(|node_idx| Item {
+                    dataset_idx: 0,
+                    node_idx,
+                })
+                .collect(),
+            max_bfs_width: 256,
+            epoch: 0,
+            d_text: 4,
+            seed: 3,
+            target_columns: vec![0],
+            columns_to_drop: vec![vec![]],
+        };
+        let mut sampler = make_sampler();
+        assert_eq!(sampler.len(), 1);
+        let batch = sampler.batch(0);
+        assert_eq!(batch.true_batch_size, 2);
+        assert_eq!(&batch.node_idxs[..4], &[0, 1, -1, -1]);
+        assert_eq!(&batch.masks[..4], &[true, false, false, false]);
+        assert_eq!(batch.masks, batch.is_targets);
+        assert_eq!(&batch.is_padding[..4], &[false, false, true, true]);
+        assert_eq!(batch.f2p_nbr_idxs[0], 1);
+        assert_eq!(batch.f2p_rel_idxs[0], 0);
+        assert_eq!(batch.boolean_values[0], bf16::ONE);
+        assert_eq!(
+            &batch.col_name_values[..4],
+            &[0., 1., 2., 3.].map(bf16::from_f32)
+        );
+        // The unused final batch slot repeats an example, as before; the
+        // evaluator excludes it using true_batch_size.
+        assert_eq!(&batch.node_idxs[8..12], &batch.node_idxs[..4]);
+        let mut same_seed = make_sampler();
+        sampler.shuffle_py(2);
+        same_seed.shuffle_py(2);
+        assert_eq!(sampler.batch(0).node_idxs, same_seed.batch(0).node_idxs);
+        fs::remove_dir_all(directory).unwrap();
     }
-    let mean = sum as f64 / cli.num_trials as f64;
-    let std = (sum_sq as f64 / cli.num_trials as f64 - mean * mean).sqrt();
-    println!("Mean: {} ms,\tStd: {} ms", mean, std);
 }
