@@ -1,5 +1,7 @@
 # modded-nanoRT
 
+**Author:** Gabriel Veloso.
+
 Our paper, *Speedrunning Relational Foundation Model Pretraining*, was accepted
 at the **CODEC-FM Workshop at NeurIPS 2026**.
 
@@ -30,7 +32,7 @@ Requirements: Linux x86-64, one NVIDIA H200, a CUDA 12.4-compatible driver,
 and [pixi](https://pixi.sh/).
 
 ```bash
-git clone --branch codex/camera-ready --single-branch https://github.com/kunumi/nanoRT.git
+git clone https://github.com/kunumi/nanoRT.git
 cd nanoRT
 ./run.sh
 ```
