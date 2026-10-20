@@ -1,5 +1,8 @@
 # modded-nanoRT
 
+Our paper, *Speedrunning Relational Foundation Model Pretraining*, was accepted
+at the **CODEC-FM Workshop at NeurIPS 2026**.
+
 This repository hosts the *nanoRT speedrun*, in which we collaboratively and
 competitively search for the fastest way to train a Relational Transformer on
 **1 NVIDIA H200** to reach **0.81621 pooled zero-shot AUROC** on the frozen
