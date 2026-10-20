@@ -1,13 +1,29 @@
 # modded-nanoRT
 
-Code for **Speedrunning Relational Foundation Model Pretraining**.
-The implementation combines a Relational Transformer with typed trilinear
-attention over foreign-key edges, Muon and AdamW optimization, and
-column-grouped SIGReg regularization.
+This repository hosts the *nanoRT speedrun*, in which we collaboratively and
+competitively search for the fastest way to train a Relational Transformer on
+**1 NVIDIA H200** to reach **0.81621 pooled zero-shot AUROC** on the frozen
+[`rel-avito`](https://relbench.stanford.edu/) validation set.
 
-## Quick start
+The target comes from a 45-minute calibration run of the upstream
+[Relational Transformer](https://github.com/snap-stanford/relational-transformer).
+The code descends from that implementation and follows the cumulative speedrun
+format of [modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt) and
+[modded-nanoTabPFN](https://github.com/borawhocodess/modded-nanotabpfn).
 
-Training requires Linux x86-64, one NVIDIA H200, a CUDA 12.4-compatible driver,
+The best archived record reaches the target in **5m05.6s (305.63 seconds)**,
+an **8.83× speedup** over the calibration horizon, using:
+
+- [Muon](https://github.com/KellerJordan/Muon) for transformer block matrices,
+  with AdamW for the remaining parameters;
+- column-view **SIGReg** after the first transformer block, with global
+  column pooling and `lambda_col=1e-3`;
+- **typed trilinear attention** over foreign-key edges, with static text-derived
+  relation states and per-head QK normalization.
+
+## Running the current record
+
+Requirements: Linux x86-64, one NVIDIA H200, a CUDA 12.4-compatible driver,
 and [pixi](https://pixi.sh/).
 
 ```bash
@@ -16,110 +32,108 @@ cd nanoRT
 ./run.sh
 ```
 
-The launcher installs the locked Python 3.12 / PyTorch 2.6 environment, builds
-the Rust sampler, downloads the preprocessed data, checks holdout isolation,
-and starts training. Initial setup downloads tens of gigabytes and compiles
-the sampler. Logs are stored locally with W&B in offline mode by default.
-Set `WANDB_MODE=online` to send logs to your W&B account.
+`run.sh` installs the locked environment, builds the Rust sampler, downloads
+the frozen artifacts, checks holdout isolation, and starts training.
+The first invocation downloads tens of gigabytes and compiles the environment.
+Setup and compile warm-up are outside the historical record timer.
 
-The default dataset is
-[GabrielVeloso/nanort-artifacts](https://huggingface.co/datasets/GabrielVeloso/nanort-artifacts),
-pinned to commit `8e6289edd0aa1d61b3b4c2ec1e1beed48224cd2c`.
-The installer records the resolved revision in the training metadata.
-This release consumes the published frozen artifacts directly.
+The public [artifact dataset](https://huggingface.co/datasets/GabrielVeloso/nanort-artifacts)
+is pinned to commit `8e6289edd0aa1d61b3b4c2ec1e1beed48224cd2c`.
+See the [data guide](data/README.md) for installation and layout details.
 
-## Configuration
-
-[`rt/config.py`](rt/config.py) defines the training configuration. Set
-`NANORT_*` environment variables to override defaults:
+Training defaults live in [`rt/config.py`](rt/config.py). Override them through
+environment variables:
 
 ```bash
 NANORT_SEED=1 ./run.sh
-NANORT_HOLDOUT_DB=rel-amazon ./run.sh
-NANORT_TIME_BUDGET_MINUTES=10 ./run.sh
 ```
 
-| Setting | Default |
+W&B logs stay offline by default. Set `WANDB_MODE=online` and
+`WANDB_PROJECT=your-project` to publish your own run.
+
+| Setting | Record recipe |
 |---|---|
-| Training / validation | five RelBench databases / `rel-avito` |
-| Optimizer | Muon for block matrices; AdamW for other parameters |
-| Batch size / context length | `256` / `1024` |
 | Model | 12 blocks, width 256, 8 heads |
-| Typed trilinear attention | all blocks; static relation states; QK normalization |
-| SIGReg | column groups after block 0, weight `1e-3` |
-| Evaluation | untimed step 0, then every 100 updates |
-| Target / budget | pooled AUROC `0.81621` / 45 minutes |
+| Batch size / context length | `256` / `1024` |
+| AdamW / Muon learning rate | `1e-3` / `5e-3` |
+| Muon warm-up | 3,000 steps |
+| Trilinear attention | all blocks; static relations; QK normalization |
+| SIGReg | block 0, column view, weight `1e-3` |
+| Eligible evaluation | every 100 updates |
+| Timed budget | 45 minutes |
 
-The implementation retains `simplicial` in class and configuration names for
-compatibility. This names the typed trilinear operator used by the model.
-See the [benchmark specification](docs/BENCHMARK.md) for the metric, timing
-boundary, and holdout protocol.
+The code retains `simplicial` in class and configuration names for compatibility
+with the record runs.
 
-## Data
+## Record history
 
-To install the artifacts separately:
+Historical progression for the following task:
 
-```bash
-pixi install --locked
-pixi run python data/download.py \
-  --repo-id GabrielVeloso/nanort-artifacts \
-  --revision 8e6289edd0aa1d61b3b4c2ec1e1beed48224cd2c \
-  --holdout rel-avito
-```
+> Train on five RelBench databases and reach at least 0.81621 pooled zero-shot
+> AUROC on the frozen `rel-avito` holdout using 1× NVIDIA H200.
 
-`NANORT_ARTIFACT_ROOT` controls the download cache; `NANORT_PRE_ROOT` controls
-the installed data directory. `run.sh` defaults to
-`~/.cache/modded-nanort/artifacts` and `~/.cache/modded-nanort/pre`.
-Use `NANORT_HF_REPO` and `NANORT_HF_REVISION` to select another compatible bundle.
-See the [data guide](data/README.md) and [artifact specification](docs/ARTIFACTS.md).
+| # | Record | Date | Description | Links | Contributor |
+|---:|---|---|---|---|---|
+| 1 | 45m00s calibration | — | AdamW Relational Transformer | [protocol](docs/BENCHMARK.md) | — |
+| 2 | 12m27s | 2026-05-05 | + Muon | [code](https://github.com/kunumi/nanoRT/commit/c50df4c) | Gabriel Veloso |
+| 3 | 7m26s | 2026-06-24 | + column-view SIGReg | [code](https://github.com/kunumi/nanoRT/commit/49df323) | Gabriel Veloso |
+| 4 | **5m05.6s** | 2026-07-28 | + typed trilinear attention | [log](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn), [checkpoint](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel) | Gabriel Veloso |
 
-## Validation
+Record #4 first verifies the target at step 100, with pooled AUROC `0.8713918`
+and time-to-target `305.6257 s`. It is **1.46× faster** than record #3.
+These are archived results; the streamlined release still needs a fresh H200
+run to measure its own wall-clock time.
 
-On the supported Linux environment:
+## Rules
+
+New records must:
+
+- use one NVIDIA H200 and start trainable weights from a declared random seed;
+- keep the frozen training mixture: `rel-amazon`, `rel-hm`, `rel-stack`,
+  `rel-trial`, and `rel-f1`, with `rel-avito` held out from gradient updates;
+- preserve the validation artifact, target masking, temporal cutoffs, and
+  declared leakage-column exclusions;
+- preserve the pooled AUROC implementation, target, evaluation cadence,
+  and timer boundary;
+- load no pretrained model checkpoint;
+- report runs that miss the target as right-censored failures.
+
+Architecture, optimization, regularization, sampling, precision, and systems
+implementation are open. See the [benchmark specification](docs/BENCHMARK.md)
+for the complete protocol and required evidence.
+
+## Evaluation details
+
+The official evaluator concatenates predictions and labels from both eligible
+`rel-avito` tasks, `user-visits` and `user-clicks`, and computes **one pooled
+instance-level AUROC**. Cross-task score alignment contributes to this metric.
+Each evaluation also reports per-task AUROC, prevalence, within-task and
+cross-task contributions, and prediction tie rates.
+
+Step 0 evaluates the initialized model outside the timer. It cannot establish
+a record or select a checkpoint. The initialized recipe can already exceed the
+pooled target, so the historical record measures time to the first eligible
+verified solution under this protocol.
+
+The clock starts after the first optimizer update and includes subsequent
+training, scheduled validation, logging, and checkpointing. The first eligible
+evaluation is at step 100. Time-to-target is an upper bound at that evaluation
+cadence.
+
+## Tests
 
 ```bash
 pixi install --locked
 pixi run python -m pytest tests
-pixi run python -m compileall -q data rt scripts tests
 pixi run cargo test --locked --manifest-path rustler/Cargo.toml
-bash -n run.sh docker_build.sh
 ```
 
-The Python tests cover configuration, artifact installation, holdout isolation,
-AUROC decomposition, attention, SIGReg, model gradients, and training control flow.
-Reproducing the full training run and timing requires the H200 environment and
-the frozen data.
+The H200 run validates the complete compiled training path and timing result.
 
-## Docker environment
+## References
 
-Build the Linux training environment with:
-
-```bash
-./docker_build.sh
-```
-
-Mount the repository and cache directories when running the image:
-
-```bash
-docker run --rm --gpus all --ipc=host \
-  -v "$PWD:/workspace" \
-  -v nanort-cache:/root/.cache/modded-nanort \
-  -w /workspace modded-nanort:cu124-torch2.6 bash run.sh
-```
-
-## Repository
-
-```text
-rt/          model, optimization, metrics, and training
-rustler/     Rust context sampler
-data/        artifact installer and data documentation
-scripts/     training entry point
-tests/       unit and protocol tests
-docs/        data format and benchmark specifications
-```
-
-The backbone derives from the
-[Relational Transformer](https://github.com/snap-stanford/relational-transformer).
-The speedrun format follows
-[modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt) and
-[modded-nanoTabPFN](https://github.com/borawhocodess/modded-nanotabpfn).
+1. [RelBench: A Benchmark for Deep Learning on Relational Databases.](https://arxiv.org/abs/2407.20060)
+2. [Relational Transformer: Toward Zero-Shot Foundation Models for Relational Data.](https://arxiv.org/abs/2510.06377)
+3. [modded-nanoGPT.](https://github.com/KellerJordan/modded-nanogpt)
+4. [modded-nanoTabPFN.](https://github.com/borawhocodess/modded-nanotabpfn)
+5. [Muon optimizer.](https://github.com/KellerJordan/Muon)
