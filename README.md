@@ -1,6 +1,14 @@
 # modded-nanoRT
 
-**Author:** Gabriel Veloso.
+**Authors:** Gabriel Wedson Mendonça de Souza Veloso<sup>1,2</sup>,
+Luan Borges Teodoro Reis Sena<sup>1,2</sup>,
+Denis Oliveira Correa<sup>1</sup>,
+Francisco Galuppo Azevedo<sup>1,2</sup>.
+
+<sup>1</sup> Kunumi Institute, Belo Horizonte, Minas Gerais, Brazil<br>
+<sup>2</sup> Universidade Federal de Minas Gerais, Belo Horizonte, Minas Gerais, Brazil
+
+`{gabriel.veloso, luan.borges, denis, francisco}@kunumi.com`
 
 Our paper, *Speedrunning Relational Foundation Model Pretraining*, was accepted
 at the **CODEC-FM Workshop at NeurIPS 2026**.
