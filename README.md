@@ -125,16 +125,6 @@ training, scheduled validation, logging, and checkpointing. The first eligible
 evaluation is at step 100. Time-to-target is an upper bound at that evaluation
 cadence.
 
-## Tests
-
-```bash
-pixi install --locked
-pixi run python -m pytest tests
-pixi run cargo test --locked --manifest-path rustler/Cargo.toml
-```
-
-The H200 run validates the complete compiled training path and timing result.
-
 ## References
 
 1. [RelBench: A Benchmark for Deep Learning on Relational Databases.](https://arxiv.org/abs/2407.20060)

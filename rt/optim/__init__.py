@@ -6,20 +6,8 @@ MUON_BLOCK_MODULES = ("attns", "nbr_attn", "rel_attn", "ffn")
 
 
 def build_muon_param_groups(model) -> tuple[list, list]:
-    """Split model parameters into Muon and AdamW groups.
-
-    Muon group: 2-D weight matrices inside RelationalBlock attention, FFN and
-    simplicial modules (blocks.*.attns.*.w{q,k,v,o}.weight,
-    blocks.*.{nbr_attn,rel_attn}.w*.weight and blocks.*.ffn.w{1,2,3}.weight).
-
-    AdamW group: everything else — 1-D params, encoders, decoders, norms,
-    mask embeddings, classifier head.
-
-    SIGReg projector params (``sigreg.*``) are excluded entirely. They stay fp32
-    and are trained by a separate AdamW optimizer in rt/main.py.
-
-    Returns (muon_params, adamw_params).
-    """
+    """Route block matrices to Muon and remaining weights to AdamW.
+    SIGReg projectors are excluded and use a separate optimizer."""
     muon_params = []
     adamw_params = []
 

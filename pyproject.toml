@@ -22,7 +22,6 @@ scikit-learn = "<1.6.0"
 tqdm = "*"
 numpy = "*"
 huggingface_hub = "*"
-pytest = "*"
 
 [tool.pixi.dependencies]
 rust = "*"

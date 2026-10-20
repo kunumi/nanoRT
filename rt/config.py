@@ -1,12 +1,4 @@
-"""Single source of truth for training configuration.
-
-All knobs live in ``TrainConfig``. The only runtime entry point (``scripts/
-nanort_train.py``) builds one via ``TrainConfig.from_env()`` and hands it to
-``rt.main.main`` — there is no command-line flag parsing anywhere.
-
-This module deliberately has **no torch import** so the config surface can be
-inspected and unit-tested without a GPU environment.
-"""
+"""Training configuration and NANORT_* environment parsing."""
 
 from __future__ import annotations
 
@@ -16,7 +8,7 @@ from dataclasses import dataclass, field, fields
 OFFICIAL_TARGET_AUROC = 0.81621
 
 
-# ── env parsing helpers ────────────────────────────────────────────────────
+# env parsing helpers
 def _str(name: str, default: str) -> str:
     return os.environ.get(name, default).strip().strip("\"'")
 
@@ -40,9 +32,7 @@ def _bool(name: str, default: bool) -> bool:
 
 
 def _opt_int(name: str, default, *, disabled_below: int | None = None):
-    """Read an int env var; return None when unset or (optionally) when the
-    value is a sentinel below ``disabled_below`` (e.g. sigreg_layer=-1, or
-    lr_total_steps=0 → 'use max_steps')."""
+    """Read an optional integer; values below disabled_below disable it."""
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
         return default
@@ -63,8 +53,7 @@ def _opt_float(name: str, default, *, zero_is_none: bool = False):
 
 
 def _simplicial_layers(name: str):
-    """'all' → None (every block); 'none' → []; '0,4,8' → [0,4,8]. Tolerant of
-    list-like values such as '[0, 4]' (quotes and spaces allowed)."""
+    """Parse all, none, or a comma-separated list of block indices."""
     raw = os.environ.get(name, "all")
     clean = raw.strip().strip("[]()\"'").strip().lower()
     if clean in ("all", ""):
@@ -76,15 +65,14 @@ def _simplicial_layers(name: str):
 
 @dataclass
 class TrainConfig:
-    """Every training knob. Defaults reproduce the competition run; ``from_env``
-    overlays the ``NANORT_*`` environment variables."""
+    """Training settings; defaults reproduce the record recipe."""
 
-    # ── run identity ────────────────────────────────────────────────────────
+    # run identity
     holdout_db: str = "rel-avito"
     seed: int = 0
     project: str = "modded-nanort"
 
-    # ── data ────────────────────────────────────────────────────────────────
+    # data
     batch_size: int = 256
     num_workers: int = 8
     max_bfs_width: int = 256
@@ -95,7 +83,7 @@ class TrainConfig:
     train_tasks: list = field(default_factory=list)
     val_tasks: list = field(default_factory=list)
 
-    # ── optimization ────────────────────────────────────────────────────────
+    # optimization
     optimizer: str = "muon"  # "adamw" | "muon"
     lr: float = 1e-3  # AdamW group LR
     muon_lr: float = 5e-3  # Muon group LR (ignored when optimizer="adamw")
@@ -106,7 +94,7 @@ class TrainConfig:
     max_steps: int = 1_000_000
     lr_total_steps: int | None = None  # OneCycle horizon; None → max_steps
 
-    # ── model ───────────────────────────────────────────────────────────────
+    # model
     num_blocks: int = 12
     d_model: int = 256
     num_heads: int = 8
@@ -116,7 +104,7 @@ class TrainConfig:
     qk_norm: bool = True
     simplicial_layerscale_init: float = 1.0
 
-    # ── SIGReg (geometry regularization; sigreg_layer=None disables it) ──────
+    # SIGReg
     sigreg_layer: int | None = 0
     sigreg_lambda_row: float = 0.0
     sigreg_lambda_col: float = 1e-3
@@ -130,17 +118,12 @@ class TrainConfig:
     sigreg_min_group: int = 8
     sigreg_col_global_pool: bool = True
 
-    # ── evaluation / budget / checkpoint ────────────────────────────────────
+    # evaluation / budget / checkpoint
     val_eval_freq: int = 100
     eval_at_step1: bool = False
-    # Zero-gradient baseline: evaluate the model exactly as initialised, before
-    # any optimizer step. Separates "the init already scores this" from "training
-    # got here" — the two are indistinguishable when the first eval is at step 1.
+    # Evaluate initialization outside the timer.
     eval_at_step0: bool = True
-    # Dense early evals: up to `val_eval_dense_until`, evaluate every
-    # `val_eval_dense_freq` steps instead of every `val_eval_freq`. The zero-shot
-    # AUROC peaks within the first few dozen steps, which a freq of 100 misses
-    # entirely. 0 disables (plain val_eval_freq everywhere).
+    # Use a dense cadence until this step; 0 disables it.
     val_eval_dense_until: int = 0
     val_eval_dense_freq: int = 5
     time_budget_minutes: float | None = 45.0
@@ -149,8 +132,7 @@ class TrainConfig:
 
     @classmethod
     def from_env(cls) -> TrainConfig:
-        """Build a config from the ``NANORT_*`` environment. Unset vars fall
-        back to the dataclass defaults above."""
+        """Read environment overrides and validate the configuration."""
         cfg = cls(
             holdout_db=_str("NANORT_HOLDOUT_DB", cls.holdout_db),
             seed=_int("NANORT_SEED", cls.seed),
@@ -222,7 +204,7 @@ class TrainConfig:
         return cfg.validate()
 
     def validate(self) -> TrainConfig:
-        """Fail fast on invalid or scientifically ambiguous configurations."""
+        """Validate dimensions, optimization, and evaluation settings."""
         if self.optimizer not in {"adamw", "muon"}:
             raise ValueError(
                 f"optimizer must be 'adamw' or 'muon', got {self.optimizer!r}"
@@ -308,7 +290,7 @@ class TrainConfig:
         return self
 
     def summary(self) -> str:
-        """One-line human-readable dump of the non-task fields (for logs)."""
+        """Summarize non-task settings for logging."""
         skip = {"train_tasks", "val_tasks"}
         return "  ".join(
             f"{f.name}={getattr(self, f.name)}"

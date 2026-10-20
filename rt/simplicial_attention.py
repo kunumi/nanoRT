@@ -29,25 +29,9 @@ def build_rel_batch(
     num_relations,
     need_stats=False,
 ):
-    """Build sparse edge triples for relation-aware simplicial attention.
-
-    Each valid FK slot (b, s, k) stores a child cell position s, a parent node
-    id, and a relation type id. This function matches those parent node ids
-    against the query cells present in the sampled sequence and returns the
-    triples (b, q, s, r) encoded as flat 1-D gather/scatter indices:
-
-      seg_q = b * S + q  parent cell: gathers queries, segments the softmax
-                         and scatters the output of SimplicialNbrAttn
-      bs_t  = b * S + s  child cell: gathers keys/values
-      seg_r = b * R + r  relation instance: gathers relation K/V and segments
-                         the softmax / output of RelAttn
-
-    The attention modules consume these with index_select/index_add_ so the
-    index traffic stays 1-D instead of being expanded to (T, H, D).
-
-    ``matched_fk_slots`` is only computed when ``need_stats`` (it forces a
-    GPU->CPU sync); otherwise it is set to -1.
-    """
+    """Match FK parent IDs to cells and build flat gather/scatter indices.
+    seg_q selects parent queries, bs_t child cells, and seg_r relation instances.
+    Coverage statistics are optional to avoid extra GPU synchronization."""
     B, S, _ = f2p_nbr_idxs.shape
     device = f2p_nbr_idxs.device
 
@@ -83,8 +67,7 @@ def build_rel_batch(
     left = left[has_query]
     counts = counts[has_query]
 
-    # Single unavoidable sync: T sizes every downstream tensor. output_size
-    # below keeps repeat_interleave from re-syncing on counts.sum().
+    # Size downstream tensors once; output_size avoids repeated synchronization.
     total = int(counts.sum().item())
     if total == 0:
         return _empty_rel_batch(B, S, device, valid_fk_slots)
@@ -118,12 +101,7 @@ def build_rel_batch(
 
 
 def _scatter_softmax(logits, seg, n_segs):
-    """Numerically stable softmax over sparse integer segments.
-
-    ``seg`` is a 1-D segment id per row of ``logits`` (T, H). Reductions use
-    index_* ops so the index tensor stays 1-D (T,) instead of being expanded
-    to (T, H) int64 — the index traffic would otherwise dominate the values.
-    """
+    """Compute numerically stable softmax within sparse integer segments."""
     H = logits.shape[1]
 
     with torch.no_grad():
@@ -164,10 +142,7 @@ class SimplicialNbrAttn(nn.Module):
         self.wvr = nn.Linear(d_model, d_model, bias=False)
         self.wo = nn.Linear(d_model, d_model, bias=False)
 
-        # QK-norm on the three score factors. With a trilinear score the logit
-        # scale grows as ‖q‖·‖k‖·‖kr‖, so unconstrained projections let the
-        # optimizer inflate logit variance and collapse the softmax entropy.
-        # Per-head RMSNorm fixes each factor's scale before the triple product.
+        # Normalize each score factor to stabilize trilinear logits.
         norm = lambda: nn.RMSNorm(self.d_head) if qk_norm else nn.Identity()
         self.q_norm = norm()
         self.k_norm = norm()
@@ -220,8 +195,7 @@ class RelAttn(nn.Module):
         self.wv = nn.Linear(d_model, d_model, bias=False)
         self.wo = nn.Linear(d_model, d_model, bias=False)
 
-        # QK-norm — see SimplicialNbrAttn. kq/ks share wk so one norm covers
-        # both; qr_norm handles the relation-query factor.
+        # Normalize relation queries and shared cell keys.
         norm = lambda: nn.RMSNorm(self.d_head) if qk_norm else nn.Identity()
         self.qr_norm = norm()
         self.k_norm = norm()

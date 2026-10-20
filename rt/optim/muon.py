@@ -1,19 +1,11 @@
-"""Muon optimizer — single-GPU variant.
-
-Canonical implementation from https://github.com/KellerJordan/Muon
-Newton-Schulz orthogonalisation with quintic coefficients, bfloat16 internals,
-Nesterov momentum applied before orthogonalisation.
-"""
+"""Single-GPU Muon, following https://github.com/KellerJordan/Muon.
+Uses Nesterov momentum and bfloat16 Newton–Schulz iterations."""
 
 import torch
 
 
 def _zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
-    """Newton-Schulz iteration to compute G / ||G||_F (approximate polar factor).
-
-    Quintic coefficients from Jordan (2024) — converges in 5 steps for typical
-    gradient matrices encountered in transformer training.
-    """
+    """Approximate the polar factor with quintic Newton–Schulz iterations."""
     if G.ndim < 2:
         raise ValueError(
             "Newton-Schulz orthogonalisation requires a tensor with at least "
@@ -35,19 +27,7 @@ def _zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
 
 
 class Muon(torch.optim.Optimizer):
-    """Muon — MomentUm Orthogonalised by Newton-schulz.
-
-    Applies Nesterov momentum to the gradient, then orthogonalises the result
-    via Newton-Schulz before the parameter update.  Intended for 2-D weight
-    matrices in hidden layers; use AdamW for everything else.
-
-    Args:
-        params: 2-D weight tensors to optimise.
-        lr: Learning rate (typically ~10× the AdamW LR).
-        momentum: Nesterov momentum coefficient (default 0.95).
-        nesterov: Use Nesterov momentum (default True).
-        ns_steps: Newton-Schulz iteration steps (default 5).
-    """
+    """Orthogonalize momentum updates for matrix parameters."""
 
     def __init__(
         self,

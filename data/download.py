@@ -1,9 +1,4 @@
-"""Download and install the frozen relation-aware nanoRT artifacts.
-
-The Hugging Face repository stores one immutable bundle per held-out database.
-This installer downloads only files used by training, validates the relation
-metadata, and creates the per-database links consumed by Python and Rust.
-"""
+"""Download, validate, and install relation-aware data artifacts."""
 
 from __future__ import annotations
 

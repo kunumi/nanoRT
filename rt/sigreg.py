@@ -1,54 +1,17 @@
-"""SIGReg — Sketched Isotropic Gaussian Regularization for nanoRT.
-
-Adapts the SIGReg loss from LeJEPA (Balestriero & LeCun, 2025,
-arXiv:2511.08544) and "Optimizing Pre-Training of Tabular Foundation Models by
-Shaping Geometry" to the *relational* hidden states of nanoRT.
-
-nanoRT's hidden state at a block is a flat sequence of cell embeddings
-``x ∈ (B, S, E)`` — not the clean ``(B, R, C, E)`` grid of nanoTabPFN. We
-recover the paper's two complementary views from the relational structure that
-the model already computes:
-
-  * **row view**  — group cells by ``node_idx`` (the C features of one datapoint)
-  * **column view** — group cells by ``(table_name_idx, col_name_idx)`` (the R
-    datapoints of one feature; this is exactly what nanoRT's ``col`` attention
-    operates over)
-
-Each view gets its own projection head (2-layer MLP with masked BatchNorm) and
-the sketched Epps–Pulley statistic is evaluated *per group* and averaged over
-groups, mirroring §2.3–2.4 of the paper.
-
-Everything here runs in **fp32** (the rest of the model is bf16): the
-characteristic-function quadrature and BatchNorm are numerically sensitive.
-The module is **training-only** — it is never invoked at eval, so BatchNorm
-always uses batch statistics and needs no running buffers.
-"""
+"""Relational SIGReg adapted from LeJEPA (arXiv:2511.08544) and
+"Optimizing Pre-Training of Tabular Foundation Models by Shaping Geometry".
+Group cells by node or (table, column); compute all regularization in fp32."""
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-# ── Epps–Pulley quadrature reference (LeJEPA `EppsPulley`) ─────────────────────
-#
-# For a 1-D sample {x_n}, the statistic compares the empirical characteristic
-# function φ̂(t) = mean_n exp(i t x_n) to that of N(0,1), φ_N(t) = exp(-t²/2),
-# integrated against a Gaussian window w(t) = exp(-t²/2):
-#
-#     T = N · ∫ |φ̂(t) − φ_N(t)|² w(t) dt
-#       = N · ∫ [(C(t) − e^{-t²/2})² + S(t)²] e^{-t²/2} dt
-#
-# with C(t)=mean_n cos(t x_n), S(t)=mean_n sin(t x_n). LeJEPA exploits evenness
-# of the integrand to integrate on [0, t_max] with a doubled trapezoidal rule.
+# Compare empirical and Gaussian characteristic functions.
+# Integrate their squared difference with a Gaussian window on [0, t_max].
 
 
 class MaskedBatchNorm1d(nn.Module):
-    """BatchNorm over the *valid* cells only (training-only, no running stats).
-
-    Standard ``nn.BatchNorm1d`` would fold zero-valued padding cells into the
-    batch statistics. Here we compute per-channel mean/var over the non-padding
-    cells across the whole (B, S) batch — matching BatchNorm's cross-sample
-    behaviour while ignoring padding.
-    """
+    """Normalize valid cells only, without running statistics."""
 
     def __init__(self, num_features: int, eps: float = 1e-5):
         super().__init__()
@@ -67,12 +30,7 @@ class MaskedBatchNorm1d(nn.Module):
 
 
 class Projector(nn.Module):
-    """VICReg/LeJEPA-style projection head: E → mult·E → … → E/div.
-
-    One or more ``Linear → MaskedBatchNorm → ReLU`` hidden layers followed by a
-    final linear projection. Defaults reproduce the paper's 1-hidden-layer
-    ``E → 4E → E/4`` projector.
-    """
+    """Project cell embeddings through an MLP with masked BatchNorm."""
 
     def __init__(
         self,
@@ -101,14 +59,7 @@ class Projector(nn.Module):
 
 
 def _dense_group_ids(keys: torch.Tensor) -> torch.Tensor:
-    """Per-row dense relabelling of integer keys into ``[0, S)``.
-
-    ``keys`` is (B, S) of arbitrary integer group keys (e.g. node ids, or packed
-    ``(table, col)`` keys). Returns (B, S) int64 where, within each row, distinct
-    keys map to distinct contiguous ids in ``[0, n_unique_row)``. Fully
-    vectorised (sort + cumsum + scatter) so it is torch.compile-friendly with
-    static shapes.
-    """
+    """Map distinct keys to contiguous group IDs within each sequence."""
     sorted_keys, sort_idx = keys.sort(dim=1)
     is_new = torch.ones_like(sorted_keys, dtype=torch.bool)
     is_new[:, 1:] = sorted_keys[:, 1:] != sorted_keys[:, :-1]
@@ -119,15 +70,7 @@ def _dense_group_ids(keys: torch.Tensor) -> torch.Tensor:
 
 
 def _dense_group_ids_global(keys: torch.Tensor) -> torch.Tensor:
-    """Global dense relabelling across the whole ``(B, S)`` batch into ``[0, B*S)``.
-
-    Like ``_dense_group_ids`` but pools cells with the same key across *all* rows
-    of the batch into a single group, instead of one group per ``(row, key)``.
-    Used by the column view so each ``(table, col)`` feature forms one large,
-    uniform population (mirroring the paper's clean-grid column groups) rather
-    than ~B small per-sequence groups. Fully vectorised (sort + cumsum + scatter)
-    so it is torch.compile-friendly with static shapes (sort is over ``B*S``).
-    """
+    """Map distinct keys to contiguous group IDs across the batch."""
     flat = keys.reshape(-1)
     sorted_keys, sort_idx = flat.sort()
     is_new = torch.ones_like(sorted_keys, dtype=torch.bool)
@@ -139,15 +82,7 @@ def _dense_group_ids_global(keys: torch.Tensor) -> torch.Tensor:
 
 
 def _pair_nonnegative_ids(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
-    """Collision-free Cantor pairing for non-negative integer tensor IDs.
-
-    Table and column IDs are indices into a global text vocabulary, not compact
-    per-table column numbers. A fixed ``table * stride + column`` encoding can
-    therefore collide silently. Cantor pairing preserves every distinct
-    ``(table, column)`` pair as long as the resulting int64 value does not
-    overflow; nanoRT vocabulary indices are many orders of magnitude below that
-    limit.
-    """
+    """Pair non-negative IDs without collisions using int64 Cantor pairing."""
     first = first.to(torch.int64)
     second = second.to(torch.int64)
     total = first + second
@@ -165,22 +100,7 @@ def _grouped_epps_pulley(
     weights: torch.Tensor,  # (T,) fp32 trapezoidal weights × window
     min_group: float,  # groups with fewer valid cells are ignored
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Sketched Epps–Pulley statistic evaluated per group, pooled over groups.
-
-    ``flat_idx`` maps each of the B·S cells to a group slot in ``[0, n_slots)``;
-    the caller chooses the grouping — per-``(row, node)`` for the row view, or
-    pooled globally per ``(table, col)`` across the whole batch for the column
-    view. Padding cells contribute zero to both the per-group sums and counts (so
-    they cannot pollute a group even if a key collision puts them in a real one).
-
-    The per-group Epps–Pulley statistic is scaled by the group size ``N_g`` (as
-    in LeJEPA), then aggregated as an ``N_g``-weighted mean of the per-group,
-    per-slice deviation — i.e. divided by the total valid cells, not the group
-    count. This makes the loss **scale-invariant to the grouping**: pooling a
-    feature across the batch (≈ N_g·B larger groups) no longer inflates the loss
-    magnitude by ~B, so ``λ`` stays comparable across pooled/per-sequence groups
-    and batch sizes.
-    """
+    """Compute grouped Epps–Pulley statistics and normalize by eligible cell count."""
     B, S, _ = z.shape
     K = dirs.shape[1]
     T = t.shape[0]
@@ -270,8 +190,7 @@ class SIGReg(nn.Module):
         )
         self.n_proj = n_proj
         self.min_group = float(min_group)
-        # Column view: pool each (table, col) feature across the whole batch into
-        # one large population (recommended), vs. one group per sequence (legacy).
+        # Optionally pool each feature across the full batch.
         self.col_global_pool = col_global_pool
 
         t = torch.linspace(0.0, t_max, knots, dtype=torch.float32)
@@ -305,8 +224,7 @@ class SIGReg(nn.Module):
         zero = torch.zeros((), device=x.device, dtype=torch.float32)
         stats: dict[str, torch.Tensor] = {}
 
-        # row view: group cells by datapoint (node), independently per sequence.
-        # Nodes are sequence-local, so the row view always pools per (row, node).
+        # Row groups are sequence-local.
         if use_row:
             row_gid = _dense_group_ids(node_idxs.to(torch.int64))  # (B, S) in [0, S)
             row_base = (
@@ -331,15 +249,9 @@ class SIGReg(nn.Module):
         for key, value in row_stats.items():
             stats[f"row/{key}"] = value
 
-        # column view: group cells by feature = (table, column). With
-        # col_global_pool, the same feature is pooled across the *whole* batch
-        # into one large, uniform population (mirroring the paper's clean-grid
-        # column groups); otherwise it falls back to per-sequence grouping.
+        # Column groups use (table, column) feature IDs.
         if use_col:
-            # Padding metadata may use arbitrary sentinel IDs. It contributes
-            # zero to the statistic. Replace it *before* pairing so an extreme
-            # sentinel cannot overflow the Cantor arithmetic, then assign one
-            # explicit key outside every real feature group.
+            # Sanitize padding IDs before pairing to avoid int64 overflow.
             safe_table_ids = torch.where(valid, table_name_idxs, 0)
             safe_column_ids = torch.where(valid, col_name_idxs, 0)
             col_keys = _pair_nonnegative_ids(safe_table_ids, safe_column_ids)

@@ -65,7 +65,6 @@ def _canonical_state_dict(model: torch.nn.Module) -> dict[str, torch.Tensor]:
     return _unwrap_model(model).state_dict()
 
 
-# NanoRT: 45-minute wall-clock training timer ──────────────────────────────────
 class TrainTimer:
     """Count historical timed wall-clock after the first optimizer update."""
 
@@ -86,14 +85,8 @@ class TrainTimer:
         return self.elapsed() > self.budget_secs
 
 
-# NanoRT: zero-shot AUROC logging callback ─────────────────────────────────────
 class ValAUROCCallback:
-    """Computes zero-shot AUROC on the fixed val artifact at regular intervals.
-
-    Tracks the wall-clock time at which the AUROC target is first reached
-    (logged as train/time_to_target; -1 if not reached within budget).
-    Uses the complete fixed holdout on one GPU.
-    """
+    """Evaluate holdout AUROC, track target time, and save the best weights."""
 
     TARGET_AUROC = OFFICIAL_TARGET_AUROC
 
@@ -132,10 +125,7 @@ class ValAUROCCallback:
             pin_memory=True,
             in_order=True,
         )
-        # Target-cell column index -> task name, for the per-task AUROC split.
-        # Each val sequence has exactly one target cell, and its col_name_idxs
-        # entry is the text index of the target column — the same index
-        # get_column_index resolves — so the batch already carries the task id.
+        # Map target-column IDs to task names for AUROC diagnostics.
         task_pairs = [
             (
                 get_column_index(target_column, table_name, db_name),
@@ -150,18 +140,12 @@ class ValAUROCCallback:
         self.eval_every = eval_every
         self.timer = timer
         self._time_to_target: float | None = None  # seconds; set once
-        # Skip the step-1 eval when False: on the static-relation route the
-        # near-init auroc is high (~0.87) and would trigger time_to_target at
-        # step 1, which is not a trained-model crossing. Skipping it makes the
-        # metric reflect a real checkpoint.
+        # Step 1 is optional; record eligibility starts at step 100 by default.
         self.eval_at_step1 = eval_at_step1
-        # Evaluate every `dense_freq` steps up to `dense_until`, then fall back to
-        # `eval_every`. The zero-shot auroc peaks within the first few dozen steps,
-        # which the default eval_every=100 steps straight over.
+        # Optionally use a denser early evaluation cadence.
         self.dense_until = dense_until
         self.dense_freq = max(1, dense_freq)
-        # Save the best-by-zero-shot-auroc checkpoint. The auroc peaks early and
-        # decays, so the budget-end checkpoint is NOT the best one to keep.
+        # Save the best eligible post-update checkpoint.
         self.save_ckpt_dir = save_ckpt_dir
         self.best_auroc = -float("inf")
         self.eval_seconds_total = 0.0
@@ -193,11 +177,7 @@ class ValAUROCCallback:
                 batch["is_targets"][true_batch_size:, :] = False
                 batch["is_padding"][true_batch_size:, :] = True
 
-                # need_stats defaults to True, which makes the model compute ~40
-                # diagnostics per batch — including .unique() calls — and
-                # _accumulate_stats then forces a GPU->CPU sync for every one of
-                # them. Take a deterministic first-batch probe and label it as
-                # such; official metrics still use the complete validation set.
+                # Probe diagnostics on the first batch; score the complete holdout.
                 want_stats = stats_count == 0
                 loss, yhat_dict, _stats = net(batch, need_stats=want_stats)
                 if want_stats:
@@ -222,10 +202,7 @@ class ValAUROCCallback:
             n_loss_examples, 1
         )
 
-        # auroc_zero_shot pools all val tasks into one number and is kept as-is:
-        # it is what the record history and time_to_target are measured against.
-        # The decomposition next to it says how much of it is base-rate
-        # separation between tasks rather than within-task signal.
+        # Keep the historical pooled-metric alias for archived runs.
         log = {
             "val/auroc_pooled": auroc,
             "val/auroc_zero_shot": auroc,
@@ -244,10 +221,7 @@ class ValAUROCCallback:
             log["timing/val_eval_seconds"] = eval_seconds
             log["timing/val_eval_seconds_total"] = self.eval_seconds_total
 
-        # Step 0 is the zero-gradient baseline: it must never set time_to_target
-        # (the timer has not even started, so it would read ~0s and the metric
-        # would be meaningless). Record the crossing as a flag instead — an init
-        # that already clears the target is the finding, not a 0-second record.
+        # Step 0 is diagnostic and cannot establish a record.
         if step == 0:
             crossed = float(auroc >= self.TARGET_AUROC)
             log["val/target_crossed_at_init"] = crossed
@@ -548,8 +522,7 @@ def main(cfg: TrainConfig):
                     )
                 wandb.log(log, step=step)
 
-                # The historical clock starts after the first optimizer update,
-                # including its logging. Step-0 evaluation is always untimed.
+                # Start the historical timer after the first update and its logging.
                 if timer is not None:
                     timer.start()
                     wandb.log({"train/elapsed_seconds": timer.elapsed()}, step=step)

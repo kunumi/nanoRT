@@ -18,9 +18,7 @@ def _pre_root() -> str:
 
 @cache
 def _load_column_index(db_name: str) -> dict:
-    """
-    Load the column index mapping for a dataset (cached).
-    """
+    """Load cached column metadata."""
     column_index_path = os.path.join(_pre_root(), db_name, "column_index.json")
 
     with open(column_index_path) as f:
@@ -28,9 +26,7 @@ def _load_column_index(db_name: str) -> dict:
 
 
 def get_column_index(column_name: str, table_name: str, db_name: str) -> int:
-    """
-    Get the index of a column in the text embeddings for a given dataset.
-    """
+    """Resolve a table-column name to its frozen text index."""
     column_index = _load_column_index(db_name)
     target = f"{column_name} of {table_name}"
 

@@ -1,12 +1,4 @@
-"""modded-nanoRT training entry point.
-
-All configuration lives in ``rt.config.TrainConfig`` and is populated from the
-``NANORT_*`` environment variables. There is no command-line flag parsing; set
-environment variables to change the record recipe.
-
-Run:
-    NANORT_HOLDOUT_DB=rel-avito pixi run python scripts/nanort_train.py
-"""
+"""Resolve the frozen holdout protocol and train from NANORT_* settings."""
 
 import json
 import os
@@ -57,8 +49,7 @@ def load_artifact_provenance() -> None:
 
 
 def resolve_tasks(cfg: TrainConfig) -> TrainConfig:
-    """Fill cfg.train_tasks / cfg.val_tasks from cfg.holdout_db and validate that
-    the required preprocessed artifacts are present. Returns the same cfg."""
+    """Resolve tasks and verify physical and logical holdout isolation."""
     cfg.validate()
     if cfg.holdout_db not in HOLDOUT_CANDIDATES:
         raise ValueError(
@@ -163,8 +154,7 @@ if __name__ == "__main__":
     try:
         run(cfg)
     except Exception:
-        # Preserve the traceback in W&B when a run is active and always flush
-        # it to stdout for local or batch execution.
+        # Persist the traceback in W&B when a run is active.
         import traceback
 
         tb = traceback.format_exc()

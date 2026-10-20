@@ -1,15 +1,4 @@
-"""Diagnostics for nanoRT's official pooled instance-level validation AUROC.
-
-The speedrun intentionally computes one AUROC after concatenating the predictions
-from all eligible rel-avito validation tasks. This evaluates both within-task
-ranking and cross-task score alignment under the empirical example distribution.
-Because the tasks have different base rates, the two contributions can differ
-substantially. This module keeps the historical pooled score unchanged while
-making its exact within/cross-task decomposition auditable.
-
-Like ``rt.config``, it deliberately imports **no torch**, so it can be unit-tested
-without a GPU environment (``tests/test_val_metrics.py``).
-"""
+"""Pooled validation AUROC, task diagnostics, and evaluation cadence."""
 
 from __future__ import annotations
 
@@ -27,19 +16,7 @@ def eval_is_due(
     dense_until: int = 0,
     dense_freq: int = 5,
 ) -> bool:
-    """Whether `step` gets a val eval.
-
-    Step 0 is the zero-gradient baseline and is only ever reached by an explicit
-    call, so it always answers True. Below `dense_until` the period is
-    `dense_freq`, above it `eval_every` — the zero-shot AUROC peaks within the
-    first few dozen steps, which the default eval_every=100 steps straight over.
-
-    With ``dense_until=0`` this reproduces the original schedule exactly: every
-    `eval_every` steps, plus step 1 when `eval_at_step1`. Note that step 1 is due
-    whenever the *period* lands on it, regardless of `eval_at_step1` — that flag
-    only ever adds step 1, it never removes it (the original condition was a
-    conjunction, and a unit test pins the equivalence).
-    """
+    """Schedule step 0, periodic evaluations, and optional dense early evaluations."""
     if step == 0:
         return True
     period = max(1, dense_freq) if step <= dense_until else eval_every
@@ -54,19 +31,7 @@ def safe_auroc(labels_bin, preds) -> float:
 
 
 def auroc_between_ceiling(counts: dict) -> float:
-    """Pooled AUROC of the best score that is CONSTANT within each task.
-
-    ``counts`` maps task name -> (n_pos, n_neg). Such a score carries *zero*
-    within-task information — it only says which task a target came from — and
-    ranking the tasks by descending base rate is the ordering that maximises the
-    pooled AUROC it can reach. So this is the ceiling that pure base-rate
-    separation buys for free. Pairs inside one task are ties, worth 0.5 each.
-
-    For rel-avito (``user-visits`` and ``user-clicks``, both ``num_click``, with
-    different base rates) this sits in the 0.75-0.90 band — it brackets the
-    0.81621 target. Log it next to the pooled AUROC, or the pooled number cannot
-    be interpreted.
-    """
+    """Pooled AUROC attainable by ordering constant task scores by prevalence."""
     order = sorted(
         counts.values(),
         key=lambda c: c[0] / max(c[0] + c[1], 1),
@@ -86,26 +51,7 @@ def auroc_between_ceiling(counts: dict) -> float:
 
 
 def pooled_auroc_parts(preds, labels, task_ids) -> dict:
-    """Exact split of the pooled AUROC into within-task and cross-task terms.
-
-    Pooled AUROC is a Mann-Whitney average over every (positive, negative) pair,
-    so it factors exactly over the task each element came from:
-
-        pooled = Σ_g,h  w_gh · A_gh,        w_gh = n⁺_g·n⁻_h / (N⁺·N⁻)
-
-    with ``A_gh`` = P(a positive of task g scores above a negative of task h),
-    ties counting 0.5. The ``g = h`` terms are the per-task AUROCs. The ``g ≠ h``
-    terms compare a positive of one task against a negative of another. Those
-    comparisons are part of the official global-ranking estimand and also expose
-    how much a predictor can gain from task-level score offsets. Hence the exact
-    identity asserted by the unit test:
-
-        pooled = (1 - cross_weight)·pooled_within + cross_weight·pooled_cross
-
-    ``pooled_cross_weight`` is the fraction of the reported metric that rests on
-    cross-task pairs. ``pooled_within`` weights the per-task AUROCs by n⁺_g·n⁻_g,
-    so it differs from the unweighted ``auroc_mean_per_task``.
-    """
+    """Split pooled AUROC into within-task and cross-task Mann–Whitney contributions."""
     preds = np.asarray(preds)
     labels = np.asarray(labels)
     task_ids = np.asarray(task_ids)
@@ -148,25 +94,7 @@ def pooled_auroc_parts(preds, labels, task_ids) -> dict:
 
 
 def decompose_val_auroc(preds, labels_bin, task_ids, task_names) -> dict:
-    """Split the official pooled AUROC into interpretable task-level parts.
-
-    The target cell carries its schema metadata, so task identity is legitimate
-    model input. ``auroc_task_prior_oracle`` quantifies the pooled score attainable
-    by an analytical score that is constant within each task and orders tasks by
-    their observed validation prevalence. It is an oracle diagnostic, not a
-    trainable baseline and never participates in record selection.
-
-    Emits, per eval:
-      ``auroc/<task>``, ``base_rate/<task>``, ``n_pos/<task>``, ``n_neg/<task>``
-      ``auroc_mean_per_task``  — unweighted macro diagnostic
-      ``auroc_task_prior_oracle`` / ``auroc_between`` — task-prior oracle
-      ``auroc_pooled_{within,cross}`` + ``pooled_cross_weight`` — exact split of
-                                 the pooled number into same-task and cross-task
-                                 pairs (see ``pooled_auroc_parts``)
-      ``pred_unique`` / ``pred_duplicate_fraction`` — score quantization
-      ``pred_pos_neg_tie_rate`` / ``pred_tie_frac`` — fraction of AUROC pairs
-                                 receiving half credit because scores tie
-    """
+    """Report task AUROCs, prevalence, pooled contributions, and score ties."""
     preds = np.asarray(preds)
     labels = np.asarray(labels_bin)
     task_ids = np.asarray(task_ids)
@@ -196,8 +124,7 @@ def decompose_val_auroc(preds, labels_bin, task_ids, task_names) -> dict:
     out["val/auroc_between"] = task_prior_oracle
     out.update(pooled_auroc_parts(preds, labels, task_ids))
     out["val/n_tasks"] = float(len(counts))
-    # >0 means the col_name_idxs -> task map missed: the per-task split is still
-    # correct (it groups by the observed id), the names are just not resolved.
+    # Count task IDs missing from the name map.
     out["val/n_unmapped_tasks"] = float(
         sum(1 for tid in np.unique(task_ids) if int(tid) not in task_names)
     )

@@ -15,9 +15,7 @@ allow_ops_in_compiled_graph()
 flex_attention = torch.compile(flex_attention)
 
 
-# ---------------------------------------------------------------------------
 # Standard building blocks
-# ---------------------------------------------------------------------------
 
 
 class MaskedAttention(nn.Module):
@@ -62,9 +60,7 @@ class FFN(nn.Module):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
-# ---------------------------------------------------------------------------
 # Transformer block
-# ---------------------------------------------------------------------------
 
 
 class RelationalBlock(nn.Module):
@@ -88,17 +84,11 @@ class RelationalBlock(nn.Module):
             {l: MaskedAttention(d_model, num_heads) for l in ["feat", "col", "full"]}
         )
         self.use_simplicial = use_simplicial
-        # When False the relation stream stays static (HGT-style operators):
-        # cells still read r via SimplicialNbrAttn, but RelAttn never updates r,
-        # so it carries the frozen text-derived init r^(0) through every block.
+        # Static relations skip RelAttn updates.
         self.update_relations = update_relations and use_simplicial
         if use_simplicial:
             self.nbr_attn = SimplicialNbrAttn(d_model, num_heads, qk_norm=qk_norm)
-            # LayerScale (CaiT-style) on the trilinear deltas. Per-channel learnable
-            # gate: with a small init the cell/relation streams start from their
-            # text-derived / attention-derived priors and the optimizer decides how
-            # much relational context to fold in. init=1.0 recovers the plain
-            # residual. gradient still flows to the attn params whenever init != 0.
+            # LayerScale=1 preserves the record residual update.
             self.nbr_scale = nn.Parameter(torch.full((d_model,), layerscale_init))
             if self.update_relations:
                 self.rel_attn = RelAttn(d_model, num_heads, qk_norm=qk_norm)
@@ -146,9 +136,7 @@ class RelationalBlock(nn.Module):
         return x, r, block_stats
 
 
-# ---------------------------------------------------------------------------
 # Block mask helpers
-# ---------------------------------------------------------------------------
 
 
 def _make_block_mask(mask, batch_size, seq_len, device):
@@ -166,9 +154,7 @@ def _make_block_mask(mask, batch_size, seq_len, device):
     )
 
 
-# ---------------------------------------------------------------------------
 # Full model
-# ---------------------------------------------------------------------------
 
 
 class RelationalTransformer(nn.Module):
@@ -196,20 +182,9 @@ class RelationalTransformer(nn.Module):
         sigreg_use_row=True,
         sigreg_use_col=True,
     ):
-        """``simplicial_layers``: block indices that get the simplicial pair
-        (SimplicialNbrAttn + RelAttn). None means all blocks; an empty list
-        disables the simplicial path entirely.
-
-        ``update_relations``: when False the relation stream stays static
-        (HGT-style) — RelAttn is dropped and r keeps its frozen init r^(0).
-        ``qk_norm``: per-head RMSNorm on the trilinear score factors.
-        ``simplicial_layerscale_init``: per-channel LayerScale init on the
-        SimplicialNbrAttn/RelAttn deltas (1.0 = plain residual; <1 starts the
-        streams closer to their text/attention priors).
-
-        ``sigreg_layer``: block index whose (post-block, pre-final-norm) cell
-        hidden state is geometry-regularized by SIGReg. None disables SIGReg;
-        the lambdas in main.py gate whether the loss actually contributes."""
+        """Build typed attention blocks and optional SIGReg.
+        Use simplicial_layers=[] to disable typed attention, and
+        update_relations=False to keep relation states fixed within a forward pass."""
         super().__init__()
 
         if d_model % num_heads:
@@ -226,10 +201,7 @@ class RelationalTransformer(nn.Module):
                 f"simplicial layers out of range [0, {num_blocks}): {invalid_layers}"
             )
         self.has_simplicial = len(simplicial_layers) > 0
-        # The RelAttn of the LAST simplicial block gets no gradient: its dr
-        # updates r, and no later block consumes that r (only x reaches the head,
-        # r does not). Skip it — dead params otherwise, and the output is
-        # unchanged. `_last_simplicial` is that block index (None if no blocks).
+        # The last relation update has no consumer; omit its parameters.
         _last_simplicial = max(simplicial_layers) if simplicial_layers else None
 
         self.enc_dict = nn.ModuleDict(
@@ -283,10 +255,7 @@ class RelationalTransformer(nn.Module):
         self.norm_out = nn.RMSNorm(d_model)
         self.d_model = d_model
 
-        # SIGReg: regularize the hidden state output by block `sigreg_layer`.
-        # Same mechanism as the SigReg record run — operates on the per-cell
-        # hidden state (B, S, E), which the simplicial cell-update already fed
-        # into, so it composes with the simplicial path without extra coupling.
+        # Regularize the selected block output with SIGReg.
         self.sigreg_layer = sigreg_layer
         self.sigreg_use_row = sigreg_use_row
         self.sigreg_use_col = sigreg_use_col
@@ -324,7 +293,7 @@ class RelationalTransformer(nn.Module):
         batch_size, seq_len = node_idxs.shape
         device = node_idxs.device
 
-        # ── Attention masks ────────────────────────────────────────────────
+        # Attention masks
         pad = (~is_padding[:, :, None]) & (~is_padding[:, None, :])
         same_node = node_idxs[:, :, None] == node_idxs[:, None, :]
         kv_in_f2p = (node_idxs[:, None, :, None] == f2p_nbr_idxs[:, :, None, :]).any(-1)
@@ -345,7 +314,7 @@ class RelationalTransformer(nn.Module):
         )
         block_masks = {l: make_bm(m) for l, m in attn_masks.items()}
 
-        # ── Edge list for simplicial attention (eager, outside compile) ───
+        # Edge list for simplicial attention
         num_relations = batch["relation_embs"].shape[-2]
         rel_batch = None
         if self.has_simplicial:
@@ -358,7 +327,7 @@ class RelationalTransformer(nn.Module):
                 need_stats=need_stats,
             )
 
-        # ── Relation stream init ───────────────────────────────────────────
+        # Relation stream init
         r = self.norm_dict["relation"](
             self.enc_dict["relation"](batch["relation_embs"])
         )
@@ -371,7 +340,7 @@ class RelationalTransformer(nn.Module):
         r = r * r_mask[..., None]
         r_norm_init = r.norm() if need_stats else None
 
-        # ── Cell stream init ───────────────────────────────────────────────
+        # Cell stream init
         x = 0
         x = x + (
             self.norm_dict["col_name"](
@@ -389,22 +358,17 @@ class RelationalTransformer(nn.Module):
                 * ((batch["sem_types"] == i) & batch["masks"] & ~is_padding)[..., None]
             )
 
-        # ── Transformer blocks ─────────────────────────────────────────────
+        # Transformer blocks
         block_stats = []
         sig_x = None
         for i, block in enumerate(self.blocks):
             x, r, stats_i = block(x, r, block_masks, rel_batch, need_stats=need_stats)
-            # Defensive re-mask: RelAttn only scatters into real edges, and every
-            # projection is bias-free, so padding relations *should* stay 0 — but
-            # the relation encoder has a bias, so the invariant hinges entirely on
-            # this multiply. Reapply it after each update so padding slots can never
-            # leak a non-zero r into the next block.
+            # Re-mask relation padding after biased projections.
             if self.has_simplicial:
                 r = r * r_mask[..., None]
             if stats_i is not None:
                 block_stats.append(stats_i)
-            # Capture the hidden state after the SIGReg-regularized block
-            # (post-block, pre-final-norm — same point as the SigReg record).
+            # Capture post-block states before final normalization.
             if self.sigreg is not None and i == self.sigreg_layer:
                 sig_x = x
 
@@ -413,8 +377,7 @@ class RelationalTransformer(nn.Module):
         if return_embeddings:
             return x
 
-        # ── Stats for wandb (log steps only — keeps the .unique() sorts and
-        # GPU->CPU syncs off the hot path) ─────────────────────────────────
+        # Compute diagnostic reductions only on logging steps.
         stats = {}
         if need_stats and rel_batch is not None:
             r_norm_final = r.norm()
@@ -479,7 +442,7 @@ class RelationalTransformer(nn.Module):
                 stats["simplicial/triples_per_matched_fk_slot"] = 0.0
                 stats["simplicial/active_relation_type_frac"] = 0.0
 
-        # ── Loss ───────────────────────────────────────────────────────────
+        # Loss
         loss_out = x.new_zeros(())
         yhat_out = {t: None for t in ["number", "text", "datetime", "boolean"]}
 
@@ -510,11 +473,7 @@ class RelationalTransformer(nn.Module):
 
         loss_out = loss_out / masks.sum().clamp(min=1)
 
-        # ── SIGReg auxiliary geometry losses (training-only) ────────────────
-        # Row/col views are derived inside SIGReg from node_idxs and the packed
-        # (table, col) key; nothing is pre-split here. All returned values are
-        # 0-dim scalars (main.py logs them via _stat_to_float), and the keys are
-        # always present so every caller can unpack the three-tuple.
+        # SIGReg runs only during training and returns scalar losses.
         if self.sigreg is not None and self.training and sig_x is not None:
             sigreg_row, sigreg_col, sigreg_stats = self.sigreg(
                 sig_x,
