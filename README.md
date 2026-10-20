@@ -150,9 +150,7 @@ cadence.
 The reference calibration was evaluated every 500 updates and reached the
 target at step 10,500 (41m20s). The archived record was evaluated every 100
 updates and first verified the target at step 100 (305.6257 seconds). Both
-times are upper bounds on their respective evaluation grids. The paper reports
-182.96 seconds of verification (59.9%) and 122.67 seconds of training (40.1%)
-for that record.
+times are upper bounds on their respective evaluation grids.
 
 ## References
 
