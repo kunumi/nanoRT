@@ -269,7 +269,9 @@ impl Sampler {
         assert_eq!(relation_table_offsets.len(), dataset_tuples.len());
         for (i, (db_name, node_idx_offset, num_nodes)) in dataset_tuples.into_iter().enumerate() {
             let relation_table_offset = relation_table_offsets[i];
-            let pre_path = format!("{}/scratch/pre/{}", var("HOME").unwrap(), db_name);
+            let pre_root = var("NANORT_PRE_ROOT")
+                .unwrap_or_else(|_| format!("{}/.cache/modded-nanort/pre", var("HOME").unwrap()));
+            let pre_path = format!("{}/{}", pre_root, db_name);
             let nodes_path = format!("{}/nodes.rkyv", pre_path);
             let file = fs::File::open(&nodes_path).unwrap();
             let mmap = unsafe { Mmap::map(&file).unwrap() };

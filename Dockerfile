@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# Pre-baked image for plx_nanort_train.yaml. It warms the two slow parts of the
-# in-run bootstrap so a run skips the big downloads:
+# Reproducible H200 environment. It warms the two slow parts of the bootstrap
+# so a run skips the large dependency downloads:
 #   1. pixi package cache  (torch 2.6.0 + CUDA 12.4 wheels, rust, maturin, uv, ...)
 #   2. cargo crate cache   (rustler dependencies)
-# At run time the YAML does a fast `pixi install` (re-links the env from the warm
-# cache, no network) + `maturin develop --release` (crates pre-fetched) + train.
+# At run time `run.sh` does a fast `pixi install` (re-links the environment from
+# the warm cache), builds the pre-fetched Rust sampler, installs the frozen HF
+# artifacts, and starts training.
 #
 # The pixi env is self-contained (python 3.12, torch==2.6.0+cu124, rust, maturin,
 # uv), so the base only supplies CUDA 12.4 + cuDNN system libs matching the
@@ -21,17 +22,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/opt/cargo \
     PATH=/root/.pixi/bin:${PATH}
 
-# System deps: curl (pixi installer), build-essential + pkg-config (linking the
-# maturin/Rust extension), git, ca-certificates, and python3-pip for the YAML's
-# early best-effort tracking.init() (runs on system python, not the pixi env).
+# System dependencies for pixi and the Rust extension.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates build-essential pkg-config git \
-        python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
-
-# Polyaxon client for tracking.init() (system python). Pre-installing makes both
-# the tracking step and the "HuggingFace CLI helpers" step no-ops at run time.
-RUN pip3 install --no-cache-dir polyaxon huggingface_hub hf_transfer || true
 
 # pixi
 RUN curl -fsSL https://pixi.sh/install.sh | bash
@@ -48,7 +42,7 @@ COPY rustler/Cargo.toml rustler/Cargo.lock ./rustler/
 # Stubs so the manifests parse during the build: rt/__init__.py for the editable
 # self-dep, and rustler/src/lib.rs because Cargo.toml declares [lib] rustler ->
 # src/lib.rs (cargo fetch parses targets even though it only downloads deps).
-# The real sources arrive at run time via `-u`.
+# Mount the repository at run time to supply the training sources.
 RUN mkdir -p rt && : > rt/__init__.py \
  && mkdir -p rustler/src && : > rustler/src/lib.rs \
  && pixi install --locked \

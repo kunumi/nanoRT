@@ -64,7 +64,7 @@ def _opt_float(name: str, default, *, zero_is_none: bool = False):
 
 def _simplicial_layers(name: str):
     """'all' → None (every block); 'none' → []; '0,4,8' → [0,4,8]. Tolerant of
-    list-ish forms Polyaxon/Jinja may emit ('[0, 4]', quotes, spaces)."""
+    list-like values such as '[0, 4]' (quotes and spaces allowed)."""
     raw = os.environ.get(name, "all")
     clean = raw.strip().strip("[]()\"'").strip().lower()
     if clean in ("all", ""):
@@ -77,7 +77,7 @@ def _simplicial_layers(name: str):
 @dataclass
 class TrainConfig:
     """Every training knob. Defaults reproduce the competition run; ``from_env``
-    overlays the ``NANORT_*`` environment variables set by the Polyaxon YAML."""
+    overlays the ``NANORT_*`` environment variables."""
 
     # ── run identity ────────────────────────────────────────────────────────
     holdout_db: str = "rel-avito"

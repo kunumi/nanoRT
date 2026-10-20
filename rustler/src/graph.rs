@@ -32,7 +32,9 @@ pub struct GraphInspector {
 impl GraphInspector {
     #[new]
     fn new(db_name: &str) -> PyResult<Self> {
-        let pre_path = format!("{}/scratch/pre/{}", var("HOME").unwrap(), db_name);
+        let pre_root = var("NANORT_PRE_ROOT")
+            .unwrap_or_else(|_| format!("{}/.cache/modded-nanort/pre", var("HOME").unwrap()));
+        let pre_path = format!("{}/{}", pre_root, db_name);
 
         let nodes_file = fs::File::open(format!("{}/nodes.rkyv", pre_path))
             .map_err(|e| PyIOError::new_err(e.to_string()))?;

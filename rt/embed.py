@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import numpy as np
 import orjson
@@ -67,8 +68,11 @@ def main(
     else:
         device_type = torch.device(device).type
 
-    text_path = f"{os.environ['HOME']}/scratch/pre/{dataset_name}/text.json"
-    with open(text_path) as f:
+    pre_root = Path(
+        os.environ.get("NANORT_PRE_ROOT", Path.home() / ".cache" / "modded-nanort" / "pre")
+    ).expanduser()
+    text_path = pre_root / dataset_name / "text.json"
+    with text_path.open() as f:
         raw = f.read()
     text_list = orjson.loads(raw)
 
@@ -79,7 +83,7 @@ def main(
     )
     emb_list = text_embedder(text_list, device=device)
 
-    emb_path = f"{os.environ['HOME']}/scratch/pre/{dataset_name}/text_emb_{embedding_model}.bin"
+    emb_path = pre_root / dataset_name / f"text_emb_{embedding_model}.bin"
     emb = np.stack(emb_list).astype(bfloat16)
     emb.tofile(emb_path)
 

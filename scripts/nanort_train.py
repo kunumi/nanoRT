@@ -1,20 +1,24 @@
-"""NanoRT training entry point.
+"""modded-nanoRT training entry point.
 
 All configuration lives in ``rt.config.TrainConfig`` and is populated from the
-``NANORT_*`` environment variables (set by ``plx_nanort_train.yaml``). There is
-**no command-line flag parsing** — to change a knob, set the env var / YAML input.
+``NANORT_*`` environment variables. There is no command-line flag parsing; set
+environment variables to change the record recipe.
 
 Run:
     NANORT_HOLDOUT_DB=rel-avito pixi run python scripts/nanort_train.py
 """
 
 import json
+import os
 from pathlib import Path
 
 from rt.config import TrainConfig
 from rt.tasks import autocomplete_clf_tasks, forecast_clf_tasks
 
-PRE_ROOT = Path.home() / "scratch" / "pre"
+PRE_ROOT = Path(
+    os.environ.get("NANORT_PRE_ROOT", Path.home() / ".cache" / "modded-nanort" / "pre")
+).expanduser()
+INSTALL_MANIFEST = PRE_ROOT / ".modded-nanort-artifacts.json"
 
 HOLDOUT_CANDIDATES = [
     "rel-amazon",
@@ -35,6 +39,23 @@ def clf_tasks_for_db(db_name: str):
     return [t for t in ALL_CLF_TASKS if t[0] == db_name]
 
 
+def load_artifact_provenance() -> None:
+    """Restore the immutable HF identity written by ``data/download.py``."""
+    if not INSTALL_MANIFEST.is_file():
+        return
+    with INSTALL_MANIFEST.open() as file:
+        manifest = json.load(file)
+    mappings = {
+        "NANORT_ARTIFACT_REPO": "repo_id",
+        "NANORT_ARTIFACT_REVISION": "resolved_revision",
+        "NANORT_ARTIFACT_PREFIX": "artifact_prefix",
+    }
+    for environment_name, manifest_name in mappings.items():
+        value = manifest.get(manifest_name)
+        if value:
+            os.environ.setdefault(environment_name, str(value))
+
+
 def resolve_tasks(cfg: TrainConfig) -> TrainConfig:
     """Fill cfg.train_tasks / cfg.val_tasks from cfg.holdout_db and validate that
     the required preprocessed artifacts are present. Returns the same cfg."""
@@ -51,8 +72,7 @@ def resolve_tasks(cfg: TrainConfig) -> TrainConfig:
         if not db_path.is_dir():
             raise FileNotFoundError(
                 f"Train artifact not found at {db_path}.\n"
-                f"Build it first: plx_nanort_build_upload_relations_holdout.yaml "
-                f"--holdout {cfg.holdout_db}"
+                "Install it first with data/download.py."
             )
         train_artifact_paths.add(db_path.resolve())
     if len(train_artifact_paths) != len(train_dbs):
@@ -81,8 +101,7 @@ def resolve_tasks(cfg: TrainConfig) -> TrainConfig:
     if not val_artifact_path.is_dir():
         raise FileNotFoundError(
             f"Val artifact not found at {val_artifact_path}.\n"
-            f"Build it first: plx_nanort_build_upload_relations_holdout.yaml "
-            f"--holdout {cfg.holdout_db}"
+            "Install it first with data/download.py."
         )
     if val_artifact_path.resolve() in train_artifact_paths:
         raise RuntimeError(
@@ -140,12 +159,13 @@ def run(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
+    load_artifact_provenance()
     cfg = TrainConfig.from_env()
     try:
         run(cfg)
     except Exception:
-        # Polyaxon pod logs vanish with the pod — persist the traceback in
-        # wandb (if the run got that far) and flush it to stdout.
+        # Preserve the traceback in W&B when a run is active and always flush
+        # it to stdout for local or batch execution.
         import traceback
 
         tb = traceback.format_exc()

@@ -99,7 +99,9 @@ fn cast_col_to_bool_if_present(
 }
 
 pub fn main(cli: Cli) {
-    let dataset_path = format!("{}/scratch/relbench/{}", var("HOME").unwrap(), cli.db_name);
+    let relbench_root = var("NANORT_RELBENCH_ROOT")
+        .unwrap_or_else(|_| format!("{}/scratch/relbench", var("HOME").unwrap()));
+    let dataset_path = format!("{}/{}", relbench_root, cli.db_name);
 
     let dashes = dataset_path.matches("-").count();
     dbg!(dashes);
@@ -669,7 +671,9 @@ pub fn main(cli: Cli) {
     pbar.finish();
     println!("done in {:?}.", tic.elapsed());
 
-    let pre_path = format!("{}/scratch/pre/{}", var("HOME").unwrap(), cli.db_name);
+    let pre_root = var("NANORT_PRE_ROOT")
+        .unwrap_or_else(|_| format!("{}/.cache/modded-nanort/pre", var("HOME").unwrap()));
+    let pre_path = format!("{}/{}", pre_root, cli.db_name);
     fs::create_dir_all(Path::new(&pre_path)).unwrap();
 
     println!("writing out text...");

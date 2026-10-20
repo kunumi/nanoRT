@@ -43,6 +43,7 @@ def _reproducibility_metadata(device: str) -> dict[str, str | float | bool | Non
         "official_target_auroc": OFFICIAL_TARGET_AUROC,
         "artifact_repo": os.environ.get("NANORT_ARTIFACT_REPO"),
         "artifact_revision": os.environ.get("NANORT_ARTIFACT_REVISION"),
+        "artifact_prefix": os.environ.get("NANORT_ARTIFACT_PREFIX"),
         "git_commit": commit,
         "git_dirty": None if commit is None else status is not None,
         "python_version": platform.python_version(),

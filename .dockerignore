@@ -1,22 +1,8 @@
-# The Dockerfile only COPYs pyproject.toml, pixi.lock and rustler/Cargo.*, so
-# keep the build context tiny — exclude everything heavy/irrelevant.
-.git
-backup
-assets
-.pixi
-.polyaxon
-.claude
-.gitfilter
-__pycache__
-*.pyc
-*.egg-info
-.ipynb_checkpoints
-rustler/target
-ckpts
-wandb
-outputs
-*.pt
-*.ckpt
-.vscode
-.idea
-.DS_Store
+# Only dependency manifests are needed to build the environment image.
+**
+!Dockerfile
+!pyproject.toml
+!pixi.lock
+!rustler/
+!rustler/Cargo.toml
+!rustler/Cargo.lock

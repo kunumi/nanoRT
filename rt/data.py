@@ -15,14 +15,19 @@ from torch.utils.data import Dataset
 from rustler import Sampler
 
 
+def _pre_root() -> str:
+    return os.path.expanduser(
+        os.environ.get("NANORT_PRE_ROOT", "~/.cache/modded-nanort/pre")
+    )
+
+
 @cache
 def _load_column_index(db_name: str) -> dict:
     """
     Load the column index mapping for a dataset (cached).
     """
-    home = os.environ.get("HOME", ".")
     column_index_path = os.path.join(
-        home, "scratch", "pre", db_name, "column_index.json"
+        _pre_root(), db_name, "column_index.json"
     )
 
     with open(column_index_path) as f:
@@ -46,9 +51,8 @@ def get_column_index(column_name: str, table_name: str, db_name: str) -> int:
 
 @cache
 def _load_relation_text_idxs(db_name: str) -> tuple[int, ...]:
-    home = os.environ.get("HOME", ".")
     relation_text_idxs_path = os.path.join(
-        home, "scratch", "pre", db_name, "relation_text_idxs.json"
+        _pre_root(), db_name, "relation_text_idxs.json"
     )
 
     with open(relation_text_idxs_path) as f:
@@ -59,9 +63,8 @@ def _load_relation_text_idxs(db_name: str) -> tuple[int, ...]:
 def _load_text_embeddings(
     db_name: str, embedding_model: str, d_text: int
 ) -> np.ndarray:
-    home = os.environ.get("HOME", ".")
     emb_path = os.path.join(
-        home, "scratch", "pre", db_name, f"text_emb_{embedding_model}.bin"
+        _pre_root(), db_name, f"text_emb_{embedding_model}.bin"
     )
     emb = np.fromfile(emb_path, dtype=ml_dtypes.bfloat16)
     return emb.reshape(-1, d_text)
@@ -122,9 +125,7 @@ class RelationalDataset(Dataset):
             elif split == "test":
                 split = "Test"
 
-            table_info_path = (
-                f"{os.environ['HOME']}/scratch/pre/{db_name}/table_info.json"
-            )
+            table_info_path = os.path.join(_pre_root(), db_name, "table_info.json")
             with open(table_info_path) as f:
                 table_info = json.load(f)
 
