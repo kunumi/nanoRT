@@ -95,7 +95,7 @@ class TrainConfig:
     lr_total_steps: int | None = None  # OneCycle horizon; None → max_steps
 
     # model
-    num_blocks: int = 12
+    num_blocks: int = 5
     d_model: int = 256
     num_heads: int = 8
     d_ff: int = 1024
