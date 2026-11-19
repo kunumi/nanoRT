@@ -6,12 +6,14 @@ The code builds on [Relational Transformer](https://github.com/snap-stanford/rel
 following [modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt) and
 [modded-nanoTabPFN](https://github.com/borawhocodess/modded-nanotabpfn).
 
-The archived record reaches the target in **5m05.6s**, an **8.11× speedup** over
+The current record reaches the target in **3m43.9s**, an **11.08× speedup** over
 the reference's **41m20s**, using:
 
 - **Muon** for backbone matrices, with AdamW for other parameters.
 - **SIGReg** after the first block, with column grouping and weight `1e-3`.
 - **Typed trilinear attention**, with static foreign-key relation states.
+- **Five transformer blocks**, reduced from twelve by
+  [@borawhocodess](https://github.com/borawhocodess).
 
 ## Running the current record
 
@@ -42,11 +44,14 @@ NANORT_SEED=1 ./run.sh
 | 1 | 41m20s | — | AdamW Relational Transformer | [protocol](docs/BENCHMARK.md) | — |
 | 2 | 12m27s | 2026-05-05 | + Muon | [code](https://github.com/kunumi/nanoRT/commit/c50df4c) | Gabriel Veloso |
 | 3 | 7m26s | 2026-06-24 | + column-view SIGReg | [code](https://github.com/kunumi/nanoRT/commit/49df323) | Gabriel Veloso |
-| 4 | **5m05.6s** | 2026-07-28 | + typed trilinear attention | [log](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn), [checkpoint](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel) | Gabriel Veloso |
+| 4 | 5m05.6s | 2026-07-28 | + typed trilinear attention | [log](https://wandb.ai/franciscokunumi-universidade-federal-de-minas-gerais/nanort-train/runs/ltlneqhn), [checkpoint](https://huggingface.co/GabrielVeloso/NanoRT/tree/main/checkpoints/rel-avito/nanort-simplicial-staticrel) | Gabriel Veloso |
+| 5 | **3m43.9s** | 2026-11-17 | Reduce transformer blocks from 12 to 5 | [PR](https://github.com/kunumi/nanoRT/pull/9), [H200 run](https://nb.sc.kunumi.io/ui/kunumi/Modded-RT/runs/5566e69c7f3e4776a6603d1dad3e167f/) | [@borawhocodess](https://github.com/borawhocodess) |
 
-The record first verifies the target at step 100: AUROC `0.8713918`,
-`305.6257 s`. These are archived timings; the streamlined release needs a fresh
-H200 run to measure its own time.
+The five-block model first verifies the target at step 100: pooled AUROC
+`0.8295225`, `223.8653 s`, seed `0`, and batch size `256`. The five-block model
+is **1.33× faster** than the twelve-block control (`296.8824 s`) in the same
+H200 comparison.
+This is a single-seed measurement.
 
 ## Rules
 
